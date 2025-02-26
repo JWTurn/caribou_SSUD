@@ -20,6 +20,14 @@ defineModule(sim, list(
                   'tidyterra', 'patchwork'),
   parameters = bindrows(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
+    defineParameter("disturbYear", "integer", 2020, NA, NA,
+                    paste0("This is the year the initial disturbance layers are from", 
+                           "and used for time since variables.",
+                           "This parameter would need to be updated if use a different year of data.")),
+    defineParameter("ts_else", "integer", 100, NA, NA,
+                    paste0("This is the value to fill in NAs in time since disturbance layers",
+                           "This parameter would need to be updated if want a different default year.")),
+    #####
     defineParameter(".plots", "character", "screen", NA, NA,
                     "Used by Plots function, which can be optionally used here"),
     defineParameter(".plotInitialTime", "numeric", start(sim), NA, NA,
@@ -41,11 +49,40 @@ defineModule(sim, list(
   ),
   inputObjects = bindrows(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
-    expectsInput(objectName = NA, objectClass = NA, desc = NA, sourceURL = NA)
+    expectsInput(objectName = 'studyArea_4maps', objectClass = 'SpatVector', 
+                 desc = 'Study area of telemetry data + herd areas', 
+                 sourceURL = 'https://drive.google.com/drive/u/1/folders/1bAuPuoZO9hgouAsXrmJ7YUhGGEIfn8XV'),
+    expectsInput(objectName = 'propLand', objectClass = 'SpatRaster', 
+                 desc = 'Proportion of landcover rasters based on NTEMS LCC. Default if not provided are 2019 at 500m resolution', 
+                 sourceURL = 'https://drive.google.com/drive/u/1/folders/1bAuPuoZO9hgouAsXrmJ7YUhGGEIfn8XV'),
+    expectsInput(objectName = 'lfUnpaved', objectClass = 'SpatRaster', 
+                 desc = 'Distance to unpaved linear features. Default if not provided are 2015 (from ECCC data) at 500m resolution', 
+                 sourceURL = 'https://drive.google.com/file/d/1xLYK9evnyzL4Fo7aEIjIQKH8F_ykdhCo'),
+    expectsInput(objectName = 'lfPaved', objectClass = 'SpatRaster', 
+                 desc = 'Distance to paved linear features. Default if not provided are 2015 (from ECCC data) at 500m resolution', 
+                 sourceURL = 'https://drive.google.com/file/d/18vss_I4jMAgrdLFaYQE99O1Xa3O1dVrN'),
+    expectsInput(objectName = 'disturbOther', objectClass = 'SpatRaster', 
+                 desc = 'Rasterized polygonal disturbance, not including harvest or fires. Default if not provided are 2015 (from ECCC data) at 500m resolution', 
+                 sourceURL = 'https://drive.google.com/file/d/1iJko2dGf9SmH5EiaGF8c0PA9arOtIhqB'),
+    expectsInput(objectName = 'historicalFires', objectClass = 'SpatRaster', 
+                 desc = 'Rasterized year of last fire based on NBAC. Default if not provided is 2020 at 30m resolution', 
+                 sourceURL = 'https://drive.google.com/file/d/1imnZT921zv1gIutwI2GCLl5HFLyKah2u'),
+    expectsInput(objectName = 'harv', objectClass = 'SpatRaster', 
+                 desc = 'Rasterized year of last harvest based on NBAC. Default if not provided is 2020 at 30m resolution', 
+                 sourceURL = 'https://drive.google.com/file/d/1yF-oIARALj6NRdCOn7a3gLZu8Gi9T2QK'),
+    expectsInput(objectName = 'modelOutput', objectClass = 'glmmTMB', 
+                 desc = '`glmmTMB` model output for iSSA. If none provided, default is the global 2015 WBI model.', 
+                 sourceURL = 'https://drive.google.com/file/d/16V6bMUC42GdHVx0Kep0IotItBxyKQLYN/view?usp=share_link'),
   ),
   outputObjects = bindrows(
     #createsOutput("objectName", "objectClass", "output object description", ...),
-    createsOutput(objectName = NA, objectClass = NA, desc = NA)
+    createsOutput(objectName = 'pdeLand', objectClass = 'SpatRaster', 
+                  desc = 'Stack of all layers for pde calculation'),
+    createsOutput(objectName = 'pde', objectClass = 'SpatRaster', 
+                  desc = 'Raw pde calculation'),
+    createsOutput(objectName = 'pdeMap', objectClass = 'SpatRaster', 
+                  desc = 'Binned map of pde UD for intensity of selection')
+    
   )
 ))
 
@@ -55,6 +92,9 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     init = {
       ### check for more detailed object dependencies:
       ### (use `checkObject` or similar)
+      # TODO this will need to be updated when link with prelim modules
+        ## right now hard coded to set up module
+      
 
       # do stuff for this event
       sim <- Init(sim)
@@ -126,6 +166,20 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
 Init <- function(sim) {
   # # ! ----- EDIT BELOW ----- ! #
   
+  # prep land layers for UD calculation/map
+  
+  sim$pdeLand <- load_map_layers(sim$propLand, sim$lfUnpaved, sim$lfPaved, 
+                              sim$disturbOther, sim$historicalFires, sim$harv, 
+                              P(sim)$disturbYear, P(sim)$ts_else)
+  # create table of betas from model
+  sim$issaBetasTable <- make_betas_tab(sim$issaModel)
+  
+  # calculate the pde UD following Potts and Schlaegel
+  sim$pde <- make_pde(sim$issaBetasTable, sim$pdeLand) 
+  
+  # make binned map of pde
+  sim$pdeMap <- make_pde_map(sim$pde, sim$studyArea_4maps)
+  
   # ! ----- STOP EDITING ----- ! #
 
   return(invisible(sim))
@@ -193,7 +247,73 @@ Event2 <- function(sim) {
   message(currentModule(sim), ": using dataPath '", dPath, "'.")
 
   # ! ----- EDIT BELOW ----- ! #
-
+  
+  if (!suppliedElsewhere("studyArea_4maps", sim)){
+    sim$studyArea_4maps <- Cache(prepInputs,
+                          url = extractURL("studyArea_4maps"),
+                          destinationPath = dataPath(sim),
+                          targetFile = "studyArea_4maps.shp",  
+                          alsoExtract = "similar", fun = "terra::vect",
+                          userTags = c("object:studyArea_4maps"))
+  }
+  
+  if (!suppliedElsewhere("propLand", sim)){
+    sim$propLand <- Cache(prepInputs,
+                                url = extractURL("propLand"),
+                                destinationPath = dataPath(sim),
+                                fun = "terra::rast",
+                                userTags = c("object:propLand"))
+  }
+  
+  if (!suppliedElsewhere("lfPaved", sim)){
+    sim$lfPaved <- Cache(prepInputs,
+                          url = extractURL("lfPaved"),
+                          destinationPath = dataPath(sim),
+                          fun = "terra::rast",
+                          userTags = c("object:lfPaved"))
+  }
+  
+  if (!suppliedElsewhere("lfUnpaved", sim)){
+    sim$lfUnaved <- Cache(prepInputs,
+                         url = extractURL("lfUnpaved"),
+                         destinationPath = dataPath(sim),
+                         fun = "terra::rast",
+                         userTags = c("object:lfUnaved"))
+  }
+  
+  if (!suppliedElsewhere("disturbOther", sim)){
+    sim$disturbOther <- Cache(prepInputs,
+                         url = extractURL("disturbOther"),
+                         destinationPath = dataPath(sim),
+                         fun = "terra::rast",
+                         userTags = c("object:disturbOther"))
+  }
+  
+  if (!suppliedElsewhere("historicalFires", sim)){
+    sim$historicalFires <- Cache(prepInputs,
+                         url = extractURL("historicalFires"),
+                         destinationPath = dataPath(sim),
+                         fun = "terra::rast",
+                         userTags = c("object:historicalFires"))
+  }
+  
+  if (!suppliedElsewhere("harv", sim)){
+    sim$harv <- Cache(prepInputs,
+                         url = extractURL("harv"),
+                         destinationPath = dataPath(sim),
+                         fun = "terra::rast",
+                         userTags = c("object:harv"))
+  }
+  
+  if (!suppliedElsewhere("modelOutput", sim)){
+    sim$issaModel <- Cache(prepInputs,
+                       targetFile = "mod_selmove_2015-2020_HPC_noTA.RDS",
+                       url = extractURL("modelOutput"),
+                       destinationPath = dataPath(sim),
+                       fun = "readRDS",
+                       userTags = c("object:modelOutput"))
+  }
+  
   # ! ----- STOP EDITING ----- ! #
   return(invisible(sim))
 }
