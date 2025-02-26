@@ -9,13 +9,11 @@
 # initDisturbyr <- 2015
 # ts_else <- 100
 
-load_map_layers <- function(proplandPath, lfunpavedPath, lfpavedPath, disturbotherPath, firePath,
-                            harvPath, 
-                            initDisturbyr, ts_else, dPath){
-  prop.lc <- reproducible::prepInputs(url = extractURL(proplandPath), 
-                                  #this isn't working    #destinaionPath = file.path(modPath, 'data', 'prepInputs'),
-                                      fun = "terra::rast")
-  
+load_map_layers <- function(propLC, lfOther, lfPaved, disturbOther, fire,
+                            harv, 
+                            year, ts_else){
+
+  plop.lc <- propLC
   
   prop_needleleaf <- prop.lc$needleleaf
   prop_mixforest <- prop.lc$deciduous + prop.lc$mixed + prop.lc$wet_treed
@@ -23,52 +21,26 @@ load_map_layers <- function(proplandPath, lfunpavedPath, lfpavedPath, disturboth
   prop_wets <- prop.lc$wetland
   print("prop land prepped")
   
-  linfeat_other <- reproducible::prepInputs(url = extractURL(lfunpavedPath), 
-                                      #this isn't working    #destinaionPath = file.path(modPath, 'data', 'prepInputs'),
-                                      fun = "terra::rast")
-  #linfeat_other <- rast(file.path('data', 'raw-data', 'ECCC_disturbance', 
-  #                                paste0('WB_lfother_', disturbyr, '_distto.tif')))
-  disturb <- reproducible::prepInputs(url = extractURL(disturbotherPath), 
-                                      #this isn't working    #destinaionPath = file.path(modPath, 'data', 'prepInputs'),
-                                      fun = "terra::rast")
-  #disturb <- rast(file.path('data', 'raw-data', 'ECCC_disturbance', 
-  #                          paste0('WB_disturb_other_', disturbyr, '.tif')))
   
-  
-  
-  fires <- reproducible::prepInputs(url = extractURL(firePath), 
-                                      #this isn't working    #destinaionPath = file.path(modPath, 'data', 'prepInputs'),
-                                      fun = "terra::rast")
-  #fires <- rast(file.path('data', 'raw-data', 'fire_nbac_1986_to_2020', paste0('fires_', (disturbyr+5), '.tif')))
-  
-  lf.full <- reproducible::prepInputs(url = extractURL(lfpavedPath), 
-                                    #this isn't working    #destinaionPath = file.path(modPath, 'data', 'prepInputs'),
-                                    fun = "terra::rast")
-  #lf.full <- rast(file.path('data', 'derived-data', 'distto_roadrail_500.tif'))
-  lf <- terra::crop(lf.full, terra::ext(prop.lc))
-  harv <- reproducible::prepInputs(url = extractURL(harvPath), 
-                                      #this isn't working    #destinaionPath = file.path(modPath, 'data', 'prepInputs'),
-                                      fun = "terra::rast")
-  #harv <- rast(file.path('data', 'raw-data', 'WB_harv_1985-2020.tif'))
-  
-  lf_other <- terra::resample(linfeat_other, lf, method = 'average')
+  lf <- terra::crop(lfPaved, terra::ext(prop.lc))
+  lf_other <- terra::resample(lfOther, lf, method = 'average')
   lf_other.ext <- terra::extend(lf_other, terra::ext(lf))
   print("linear features prepped")
   
-  disturb <- terra::resample(disturb, lf, method = 'max')
+  disturb <- terra::resample(disturbOther, lf, method = 'max')
   disturb.ext <- terra::extend(disturb, terra::ext(lf))
   print("other anthro disturbances  prepped")
   
-  harv <- terra::resample(harv, lf, method = 'max')
-  harv.ext <- terra::extend(harv, terra::ext(lf))
-  tsh <- (initDisturbyr + 5) - harv.ext
+  harv.crop <- terra::resample(harv, lf, method = 'max')
+  harv.ext <- terra::extend(harv.crop, terra::ext(lf))
+  tsh <- (year) - harv.ext
   tsh[is.na(tsh)] <- ts_else
   print("harvest prepped")
   
   
-  fires.crop <- terra::resample(fires, lf, method = 'max')
+  fires.crop <- terra::resample(fire, lf, method = 'max')
   #names(land.brick) <- c("lf_dist", "lc")
-  tsf <- (initDisturbyr + 5) - fires.crop
+  tsf <- (year) - fires.crop
   tsf[is.na(tsf)] <- ts_else
   print("fires prepped")
   
@@ -85,3 +57,34 @@ load_map_layers <- function(proplandPath, lfunpavedPath, lfpavedPath, disturboth
                    'log_distlfother', 'disturb')
   return(land)
 }
+
+# prop.lc <- reproducible::prepInputs(url = extractURL(proplandPath), 
+#                                 #this isn't working    #destinaionPath = file.path(modPath, 'data', 'prepInputs'),
+#                                     fun = "terra::rast")
+
+# linfeat_other <- reproducible::prepInputs(url = extractURL(lfunpavedPath), 
+#                                     #this isn't working    #destinaionPath = file.path(modPath, 'data', 'prepInputs'),
+#                                     fun = "terra::rast")
+#linfeat_other <- rast(file.path('data', 'raw-data', 'ECCC_disturbance', 
+#                                paste0('WB_lfother_', disturbyr, '_distto.tif')))
+# disturb <- reproducible::prepInputs(url = extractURL(disturbotherPath), 
+#                                     #this isn't working    #destinaionPath = file.path(modPath, 'data', 'prepInputs'),
+#                                     fun = "terra::rast")
+#disturb <- rast(file.path('data', 'raw-data', 'ECCC_disturbance', 
+#                          paste0('WB_disturb_other_', disturbyr, '.tif')))
+
+
+
+# fires <- reproducible::prepInputs(url = extractURL(firePath), 
+#                                     #this isn't working    #destinaionPath = file.path(modPath, 'data', 'prepInputs'),
+#                                     fun = "terra::rast")
+#fires <- rast(file.path('data', 'raw-data', 'fire_nbac_1986_to_2020', paste0('fires_', (disturbyr+5), '.tif')))
+
+# lf.full <- reproducible::prepInputs(url = extractURL(lfpavedPath), 
+#                                   #this isn't working    #destinaionPath = file.path(modPath, 'data', 'prepInputs'),
+#                                   fun = "terra::rast")
+#lf.full <- rast(file.path('data', 'derived-data', 'distto_roadrail_500.tif'))
+# harv <- reproducible::prepInputs(url = extractURL(harvPath), 
+#                                     #this isn't working    #destinaionPath = file.path(modPath, 'data', 'prepInputs'),
+#                                     fun = "terra::rast")
+#harv <- rast(file.path('data', 'raw-data', 'WB_harv_1985-2020.tif'))
