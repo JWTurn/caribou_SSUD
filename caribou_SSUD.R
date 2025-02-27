@@ -40,7 +40,7 @@ defineModule(sim, list(
                     "This describes the simulation time interval between save events."),
     defineParameter(".studyAreaName", "character", NA, NA, NA,
                     "Human-readable name for the study area used - e.g., a hash of the study",
-                          "area obtained using `reproducible::studyAreaName()`"),
+                    "area obtained using `reproducible::studyAreaName()`"),
     ## .seed is optional: `list('init' = 123)` will `set.seed(123)` for the `init` event only.
     defineParameter(".seed", "list", list(), NA, NA,
                     "Named list of seeds to use for each event (names)."),
@@ -51,7 +51,7 @@ defineModule(sim, list(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
     expectsInput(objectName = 'studyArea_4maps', objectClass = 'SpatVector', 
                  desc = 'Study area of telemetry data + herd areas', 
-                 sourceURL = 'https://drive.google.com/drive/u/1/folders/1bAuPuoZO9hgouAsXrmJ7YUhGGEIfn8XV'),
+                 sourceURL = 'https://drive.google.com/file/d/1XduunieEoZLcNPQphGXnKG7Ql9MF1bme/view?usp=share_link'),
     expectsInput(objectName = 'propLand', objectClass = 'SpatRaster', 
                  desc = 'Proportion of landcover rasters based on NTEMS LCC. Default if not provided are 2019 at 500m resolution', 
                  sourceURL = 'https://drive.google.com/drive/u/1/folders/1bAuPuoZO9hgouAsXrmJ7YUhGGEIfn8XV'),
@@ -92,140 +92,139 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     init = {
       ### check for more detailed object dependencies:
       ### (use `checkObject` or similar)
-      # TODO this will need to be updated when link with prelim modules
-        ## right now hard coded to set up module
       
-
       # do stuff for this event
-      sim <- Init(sim)
-
+      # prep land layers for UD calculation/map
+      sim$pdeLand <- load_map_layers(propLC = sim$propLand, lfOther = sim$lfUnpaved, 
+                                     lfPaved = sim$lfPaved, disturbOther= sim$disturbOther, 
+                                     fire = sim$historicalFires, harv = sim$harv, 
+                                     year = P(sim)$disturbYear, ts_else = P(sim)$ts_else)
+      
+      # create table of betas from model
+      sim$issaBetasTable <- make_betas_tab(sim$issaModel)
+      
+      # calculate the pde UD following Potts and Schlaegel
+      sim$pde <- make_pde(sim$issaBetasTable, sim$pdeLand) 
+      
+      # make binned map of pde
+      sim$pdeMap <- make_pde_map(sim$pde, sim$studyArea_4maps)
+      
+      writeRaster(sim$pdeMap, file.path(outputPath(sim), paste0('pde_global2015','.tif')),
+                  overwrite =TRUE)
+      
       # schedule future event(s)
-      sim <- scheduleEvent(sim, P(sim)$.plotInitialTime, "caribou_SSUD", "plot")
-      sim <- scheduleEvent(sim, P(sim)$.saveInitialTime, "caribou_SSUD", "save")
+      # sim <- scheduleEvent(sim, P(sim)$.plotInitialTime, "caribou_SSUD", "plot")
+      # sim <- scheduleEvent(sim, P(sim)$.saveInitialTime, "caribou_SSUD", "save")
     },
     plot = {
       # ! ----- EDIT BELOW ----- ! #
       # do stuff for this event
-
-      plotFun(sim) # example of a plotting function
+      
+      plot(sim$pdeMap, breaks=0:10)
       # schedule future event(s)
-
+      
       # e.g.,
       #sim <- scheduleEvent(sim, time(sim) + P(sim)$.plotInterval, "caribou_SSUD", "plot")
-
+      
       # ! ----- STOP EDITING ----- ! #
     },
-    save = {
-      # ! ----- EDIT BELOW ----- ! #
-      # do stuff for this event
-
-      # e.g., call your custom functions/methods here
-      # you can define your own methods below this `doEvent` function
-
-      # schedule future event(s)
-
-      # e.g.,
-      # sim <- scheduleEvent(sim, time(sim) + P(sim)$.saveInterval, "caribou_SSUD", "save")
-
-      # ! ----- STOP EDITING ----- ! #
-    },
-    event1 = {
-      # ! ----- EDIT BELOW ----- ! #
-      # do stuff for this event
-
-      # e.g., call your custom functions/methods here
-      # you can define your own methods below this `doEvent` function
-
-      # schedule future event(s)
-
-      # e.g.,
-      # sim <- scheduleEvent(sim, time(sim) + increment, "caribou_SSUD", "templateEvent")
-
-      # ! ----- STOP EDITING ----- ! #
-    },
-    event2 = {
-      # ! ----- EDIT BELOW ----- ! #
-      # do stuff for this event
-
-      # e.g., call your custom functions/methods here
-      # you can define your own methods below this `doEvent` function
-
-      # schedule future event(s)
-
-      # e.g.,
-      # sim <- scheduleEvent(sim, time(sim) + increment, "caribou_SSUD", "templateEvent")
-
-      # ! ----- STOP EDITING ----- ! #
-    },
+    # save = {
+    #   # ! ----- EDIT BELOW ----- ! #
+    #   # do stuff for this event
+    # 
+    #   # e.g., call your custom functions/methods here
+    #   # you can define your own methods below this `doEvent` function
+    # 
+    #   # schedule future event(s)
+    # 
+    #   # e.g.,
+    #   # sim <- scheduleEvent(sim, time(sim) + P(sim)$.saveInterval, "caribou_SSUD", "save")
+    # 
+    #   # ! ----- STOP EDITING ----- ! #
+    # },
+    # event1 = {
+    #   # ! ----- EDIT BELOW ----- ! #
+    #   # do stuff for this event
+    # 
+    #   # e.g., call your custom functions/methods here
+    #   # you can define your own methods below this `doEvent` function
+    # 
+    #   # schedule future event(s)
+    # 
+    #   # e.g.,
+    #   # sim <- scheduleEvent(sim, time(sim) + increment, "caribou_SSUD", "templateEvent")
+    # 
+    #   # ! ----- STOP EDITING ----- ! #
+    # },
+    # event2 = {
+    #   # ! ----- EDIT BELOW ----- ! #
+    #   # do stuff for this event
+    # 
+    #   # e.g., call your custom functions/methods here
+    #   # you can define your own methods below this `doEvent` function
+    # 
+    #   # schedule future event(s)
+    # 
+    #   # e.g.,
+    #   # sim <- scheduleEvent(sim, time(sim) + increment, "caribou_SSUD", "templateEvent")
+    # 
+    #   # ! ----- STOP EDITING ----- ! #
+    # },
     warning(noEventWarning(sim))
   )
   return(invisible(sim))
+  #return(sim)
 }
 
 ### template initialization
 Init <- function(sim) {
   # # ! ----- EDIT BELOW ----- ! #
-  
-  # prep land layers for UD calculation/map
-  
-  sim$pdeLand <- load_map_layers(sim$propLand, sim$lfUnpaved, sim$lfPaved, 
-                              sim$disturbOther, sim$historicalFires, sim$harv, 
-                              P(sim)$disturbYear, P(sim)$ts_else)
-  # create table of betas from model
-  sim$issaBetasTable <- make_betas_tab(sim$issaModel)
-  
-  # calculate the pde UD following Potts and Schlaegel
-  sim$pde <- make_pde(sim$issaBetasTable, sim$pdeLand) 
-  
-  # make binned map of pde
-  sim$pdeMap <- make_pde_map(sim$pde, sim$studyArea_4maps)
-  
+ 
   # ! ----- STOP EDITING ----- ! #
-
+  
   return(invisible(sim))
 }
 ### template for save events
-Save <- function(sim) {
-  # ! ----- EDIT BELOW ----- ! #
-  # do stuff for this event
-  sim <- saveFiles(sim)
-
-  # ! ----- STOP EDITING ----- ! #
-  return(invisible(sim))
-}
+# Save <- function(sim) {
+#   # ! ----- EDIT BELOW ----- ! #
+#   # do stuff for this event
+#   sim <- saveFiles(sim)
+# 
+#   # ! ----- STOP EDITING ----- ! #
+#   return(invisible(sim))
+# }
 
 ### template for plot events
 plotFun <- function(sim) {
   # ! ----- EDIT BELOW ----- ! #
   # do stuff for this event
-  sampleData <- data.frame("TheSample" = sample(1:10, replace = TRUE))
-  Plots(sampleData, fn = ggplotFn) # needs ggplot2
 
+  
   # ! ----- STOP EDITING ----- ! #
   return(invisible(sim))
 }
 
 ### template for your event1
-Event1 <- function(sim) {
-  # ! ----- EDIT BELOW ----- ! #
-  # THE NEXT TWO LINES ARE FOR DUMMY UNIT TESTS; CHANGE OR DELETE THEM.
-  # sim$event1Test1 <- " this is test for event 1. " # for dummy unit test
-  # sim$event1Test2 <- 999 # for dummy unit test
-
-  # ! ----- STOP EDITING ----- ! #
-  return(invisible(sim))
-}
-
-### template for your event2
-Event2 <- function(sim) {
-  # ! ----- EDIT BELOW ----- ! #
-  # THE NEXT TWO LINES ARE FOR DUMMY UNIT TESTS; CHANGE OR DELETE THEM.
-  # sim$event2Test1 <- " this is test for event 2. " # for dummy unit test
-  # sim$event2Test2 <- 777  # for dummy unit test
-
-  # ! ----- STOP EDITING ----- ! #
-  return(invisible(sim))
-}
+# Event1 <- function(sim) {
+#   # ! ----- EDIT BELOW ----- ! #
+#   # THE NEXT TWO LINES ARE FOR DUMMY UNIT TESTS; CHANGE OR DELETE THEM.
+#   # sim$event1Test1 <- " this is test for event 1. " # for dummy unit test
+#   # sim$event1Test2 <- 999 # for dummy unit test
+# 
+#   # ! ----- STOP EDITING ----- ! #
+#   return(invisible(sim))
+# }
+# 
+# ### template for your event2
+# Event2 <- function(sim) {
+#   # ! ----- EDIT BELOW ----- ! #
+#   # THE NEXT TWO LINES ARE FOR DUMMY UNIT TESTS; CHANGE OR DELETE THEM.
+#   # sim$event2Test1 <- " this is test for event 2. " # for dummy unit test
+#   # sim$event2Test2 <- 777  # for dummy unit test
+# 
+#   # ! ----- STOP EDITING ----- ! #
+#   return(invisible(sim))
+# }
 
 .inputObjects <- function(sim) {
   # Any code written here will be run during the simInit for the purpose of creating
@@ -241,77 +240,77 @@ Event2 <- function(sim) {
   # if (!suppliedElsewhere('defaultColor', sim)) {
   #   sim$map <- Cache(prepInputs, extractURL('map')) # download, extract, load file from url in sourceURL
   # }
-
+  
   #cacheTags <- c(currentModule(sim), "function:.inputObjects") ## uncomment this if Cache is being used
   dPath <- asPath(getOption("reproducible.destinationPath", dataPath(sim)), 1)
   message(currentModule(sim), ": using dataPath '", dPath, "'.")
-
+  
   # ! ----- EDIT BELOW ----- ! #
   
   if (!suppliedElsewhere("studyArea_4maps", sim)){
     sim$studyArea_4maps <- Cache(prepInputs,
-                          url = extractURL("studyArea_4maps"),
-                          destinationPath = dataPath(sim),
-                          targetFile = "studyArea_4maps.shp",  
-                          alsoExtract = "similar", fun = "terra::vect",
-                          userTags = c("object:studyArea_4maps"))
+                                 url = extractURL("studyArea_4maps"),
+                                 destinationPath = dataPath(sim),
+                                 targetFile = "studyArea_4maps.shp",  
+                                 alsoExtract = "similar", fun = "terra::vect",
+                                 userTags = c("object:studyArea_4maps"))
   }
   
   if (!suppliedElsewhere("propLand", sim)){
     sim$propLand <- Cache(prepInputs,
-                                url = extractURL("propLand"),
-                                destinationPath = dataPath(sim),
-                                fun = "terra::rast",
-                                userTags = c("object:propLand"))
+                          url = extractURL("propLand"),
+                          destinationPath = file.path(dataPath(sim), '500grid'),
+                          fun = "terra::rast",
+                          userTags = c("object:propLand"))
   }
   
   if (!suppliedElsewhere("lfPaved", sim)){
     sim$lfPaved <- Cache(prepInputs,
-                          url = extractURL("lfPaved"),
-                          destinationPath = dataPath(sim),
-                          fun = "terra::rast",
-                          userTags = c("object:lfPaved"))
+                         url = extractURL("lfPaved"),
+                         destinationPath = dataPath(sim),
+                         fun = "terra::rast",
+                         userTags = c("object:lfPaved"))
   }
   
   if (!suppliedElsewhere("lfUnpaved", sim)){
-    sim$lfUnaved <- Cache(prepInputs,
-                         url = extractURL("lfUnpaved"),
-                         destinationPath = dataPath(sim),
-                         fun = "terra::rast",
-                         userTags = c("object:lfUnaved"))
+    sim$lfUnpaved <- Cache(prepInputs,
+                          url = extractURL("lfUnpaved"),
+                          destinationPath = dataPath(sim),
+                          fun = "terra::rast",
+                          userTags = c("object:lfUnaved"))
   }
   
   if (!suppliedElsewhere("disturbOther", sim)){
     sim$disturbOther <- Cache(prepInputs,
-                         url = extractURL("disturbOther"),
-                         destinationPath = dataPath(sim),
-                         fun = "terra::rast",
-                         userTags = c("object:disturbOther"))
+                              url = extractURL("disturbOther"),
+                              destinationPath = dataPath(sim),
+                              fun = "terra::rast",
+                              userTags = c("object:disturbOther"))
   }
   
   if (!suppliedElsewhere("historicalFires", sim)){
     sim$historicalFires <- Cache(prepInputs,
-                         url = extractURL("historicalFires"),
-                         destinationPath = dataPath(sim),
-                         fun = "terra::rast",
-                         userTags = c("object:historicalFires"))
+                                 url = extractURL("historicalFires"),
+                                 destinationPath = dataPath(sim),
+                                 fun = "terra::rast",
+                                 userTags = c("object:historicalFires"))
   }
   
   if (!suppliedElsewhere("harv", sim)){
     sim$harv <- Cache(prepInputs,
-                         url = extractURL("harv"),
-                         destinationPath = dataPath(sim),
-                         fun = "terra::rast",
-                         userTags = c("object:harv"))
+                      url = extractURL("harv"),
+                      destinationPath = dataPath(sim),
+                      fun = "terra::rast",
+                      userTags = c("object:harv"))
   }
   
   if (!suppliedElsewhere("modelOutput", sim)){
     sim$issaModel <- Cache(prepInputs,
-                       targetFile = "mod_selmove_2015-2020_HPC_noTA.RDS",
-                       url = extractURL("modelOutput"),
-                       destinationPath = dataPath(sim),
-                       fun = "readRDS",
-                       userTags = c("object:modelOutput"))
+                           targetFile = "mod_selmove_2015-2020_HPC_noTA.RDS",
+                           url = extractURL("modelOutput"),
+                           destinationPath = dataPath(sim),
+                           fun = "readRDS",
+                           userTags = c("object:modelOutput"))
   }
   
   # ! ----- STOP EDITING ----- ! #
