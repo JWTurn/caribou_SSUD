@@ -13,16 +13,16 @@ load_map_layers <- function(propLC, lfOther, lfPaved, disturbOther, fire,
                             harv, 
                             year, ts_else){
 
-  plop.lc <- propLC
+ # plop.lc <- propLC
   
-  prop_needleleaf <- prop.lc$needleleaf
-  prop_mixforest <- prop.lc$deciduous + prop.lc$mixed + prop.lc$wet_treed
-  prop_veg <- prop.lc$shrub + prop.lc$bryoids + prop.lc$herbs
-  prop_wets <- prop.lc$wetland
+  prop_needleleaf <- propLC$needleleaf
+  prop_mixforest <- propLC$deciduous + propLC$mixed + propLC$wet_treed
+  prop_veg <- propLC$shrub + propLC$bryoids + propLC$herbs
+  prop_wets <- propLC$wetland
   print("prop land prepped")
   
   
-  lf <- terra::crop(lfPaved, terra::ext(prop.lc))
+  lf <- terra::crop(lfPaved, terra::ext(prop_needleleaf))
   lf_other <- terra::resample(lfOther, lf, method = 'average')
   lf_other.ext <- terra::extend(lf_other, terra::ext(lf))
   print("linear features prepped")
@@ -58,7 +58,7 @@ load_map_layers <- function(propLC, lfOther, lfPaved, disturbOther, fire,
   return(land)
 }
 
-# prop.lc <- reproducible::prepInputs(url = extractURL(proplandPath), 
+# propLC <- reproducible::prepInputs(url = extractURL(proplandPath), 
 #                                 #this isn't working    #destinaionPath = file.path(modPath, 'data', 'prepInputs'),
 #                                     fun = "terra::rast")
 
