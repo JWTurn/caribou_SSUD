@@ -153,6 +153,14 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
         
         sim$simLand <- c(prop_needleleaf, prop_mixforest, log_tsf, log_tsh)
         names(sim$simLand) <- c('prop_needleleaf', 'prop_mixforest', 'log_tsf', 'log_tsh')
+        
+        sim$fixedLand <- c(sim$pdeLand$prop_veg, sim$pdeLand$prop_wets, sim$pdeLand$log_distlf, 
+                           sim$pdeLand$log_distlfother, sim$pdeLand$disturb)
+        names(sim$fixedLand) <- c('prop_veg', 'prop_wets', 'log_distlf', 
+                         'log_distlfother', 'disturb')
+        
+        #updated landcover for simulated PDEs
+        sim$simPdeLand <- c(sim$fixedLand, sim$simLand)
       
         }
     },
