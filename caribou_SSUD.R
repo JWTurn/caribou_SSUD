@@ -204,10 +204,17 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
                                                         time(sim),
                                                         "_", ".tif"))
         
-        writeRaster(sim$simPdeLand[[paste0("Year", time(sim))]],
+        writeRaster(sim$simPdeMap[[paste0("Year", time(sim))]],
                     filename = layersName,
                     format = "GTiff",
                     overwrite = TRUE)
+        
+        # schedule future event(s)
+        sim <- scheduleEvent(sim, time(sim) + P(sim)$predictionInterval, "caribou_SSUD", "calcSimPde")
+        if (P(sim)$predictLastYear){
+          if (all(time(sim) == start(sim), (end(sim)-start(sim)) != 0))
+            sim <- scheduleEvent(sim, end(sim), "caribou_SSUD", "calcSimPde")
+        }
       }
       
     }
