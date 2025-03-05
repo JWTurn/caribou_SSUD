@@ -30,6 +30,10 @@ defineModule(sim, list(
     defineParameter("simulationProcess", "character", "static", NA, NA,
                     paste0("Should the simulation use LandR (dynamic) or land cover map (static)?",
                            "defaults to static")),
+    defineParameter("predictionInterval", "numeric", 10, NA, NA, "Time between predictions"),
+    defineParameter("predictLastYear", "logical", TRUE, NA, NA,
+                    paste0("If last year of simulation is not multiple of",
+                           " predictionInterval, should it predict for the last year too?")),
     #####
     defineParameter(".plots", "character", "screen", NA, NA,
                     "Used by Plots function, which can be optionally used here"),
@@ -44,6 +48,7 @@ defineModule(sim, list(
     defineParameter(".studyAreaName", "character", NA, NA, NA,
                     "Human-readable name for the study area used - e.g., a hash of the study",
                     "area obtained using `reproducible::studyAreaName()`"),
+    
     ## .seed is optional: `list('init' = 123)` will `set.seed(123)` for the `init` event only.
     defineParameter(".seed", "list", list(), NA, NA,
                     "Named list of seeds to use for each event (names)."),
@@ -135,6 +140,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       # sim <- scheduleEvent(sim, P(sim)$.plotInitialTime, "caribou_SSUD", "plot")
       # sim <- scheduleEvent(sim, P(sim)$.saveInitialTime, "caribou_SSUD", "save")
     },
+    
     simLayers = {
       if (P(sim)$simulationProcess == "dynamic" & time(sim)> P(sim)$disturbYear){
         
@@ -160,117 +166,52 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
                          'log_distlfother', 'disturb')
         
         #updated landcover for simulated PDEs
-        sim$simPdeLand <- c(sim$fixedLand, sim$simLand)
-      
-        }
-    },
-    preparingLayers = {
-      
-      
-      sim$fireLayers <- composeFireLayers(currentTime = time(sim),
-                                          historicalFires = sim$historicalFiresAll,
-                                          pathData = dataPath(sim),
-                                          fireLayers = sim$fireLayers,
-                                          cohortData = mod$cohortData,
-                                          pixelGroupMap = mod$pixelGroupMap,
-                                          decidousSp = P(sim)$decidousSp,
-                                          landClasses = c("Lowlands", "UplandsNonTreed",
-                                                          "UplandConifer", "UplandBroadleaf"),
-                                          yearClasses = c(10, 20, 30, 40, 60),
-                                          simulationProcess = P(sim)$simulationProcess,
-                                          # For correspondingClassesValues see: https://drive.google.com/drive/u/0/folders/1911W_RGwcC36HovCHtpvf806w2GHDiuO
-                                          # This is how the model was built by GNWT
-                                          correspondingClassesValues = list(
-                                            "dynamic" = list( # Converted EOSD to LCC05 values
-                                              "Lowlands" = c(8, 17, 19, 31:32),
-                                              "UplandsNonTreed" = c(23, 16, 18),
-                                              "UplandConifer" = c(1, 6),
-                                              "UplandBroadleaf" = c(2, 3, 11, 13) # 15 shouldn't exist (broadleaf sparse)
-                                            ),
-                                            "static" = list( # Original EOSD values
-                                              "Lowlands" = c(81:83, 100, 213),
-                                              "UplandsNonTreed" = c(40, 51, 52),
-                                              "UplandConifer" = c(211, 212),
-                                              "UplandBroadleaf" = c(221, 222, 231, 232)
-                                            )
-                                          ),
-                                          # "UplandsConifer" & "UplandsBroadleaf" come from biomass!
-                                          thisYearsFires = sim$rstCurrentBurnList,
-                                          runName = sim[["runName"]],
-                                          rstLCC = currRstLCC,
-                                          makeAssertions = P(sim)$makeAssertions) # Needs for the 4 types of fires
-      # Get the "fixed" layers:
-      sim$fixedLayers <- makeFixedLayers(fireLayers = sim$fireLayers,
-                                         rstLCC = currRstLCC,
-                                         pathData = dataPath(sim),
-                                         makeAssertions = P(sim)$makeAssertions,
-                                         rowOfFixedLayers = P(sim)$rowOfFixedLayers,
-                                         classTable = sim$classTable)
-      
-      # Get the simulated layers:
-      sim$simulLayers <- makeSimulatedLayers(fixedLayers = sim$fixedLayers,
-                                             classTable = sim$classTable,
-                                             fireLayers = sim$fireLayers,
-                                             cohortData = mod$cohortData,
-                                             rowOfSimulLayers = P(sim)$rowOfFixedLayers+1,
-                                             pixelGroupMap = mod$pixelGroupMap,
-                                             simulationProcess = P(sim)$simulationProcess,
-                                             rstLCC = currRstLCC,
-                                             rasterToMatch = mod$rasterToMatch,
-                                             decidousSp = P(sim)$decidousSp,
-                                             currentTime = time(sim),
-                                             historicalFires = sim$historicalFiresAll,
-                                             pathData = dataPath(sim),
-                                             makeAssertions = P(sim)$makeAssertions) #TODO remove "hardcoded" spEquiv
-      
-      # Put all layers together
-      sim$caribouLayers[[paste0("Year", time(sim))]] <- raster::stack(sim$fireLayers,
-                                                                      sim$fixedLayers,
-                                                                      sim$simulLayers,
-                                                                      sim$anthropogenicLayers)
-      # Check all layers have the corresponding names in the model
-      testthat::expect_true(all(names(sim$caribouLayers[[paste0("Year", time(sim))]]) %in%
-                                  colnames(sim$coeffTablAndValues$caribouRSF_NT$coeffTable)))
-      
-      if (time(sim) %in% P(sim)$yearsToSaveCaribouLayers) {
-        # Assert all rasters are in memory before saving the stack!
-        allInMemory <- checkRasterStackIsInMemory(rasStack = sim$caribouLayers[[paste0("Year",
-                                                                                       time(sim))]])
-        if (!all(allInMemory)) {
-          notInMem <- which(!allInMemory)
-          lapply(notInMem, function(rasNumb){
-            sim$caribouLayers[[paste0("Year", time(sim))]][[rasNumb]][] <-
-              sim$caribouLayers[[paste0("Year", time(sim))]][[rasNumb]][]
-          })
-        }
-        # Assert all are in memory, otherwises saving will fail!
-        allInMemory <- checkRasterStackIsInMemory(rasStack = sim$caribouLayers[[paste0("Year",
-                                                                                       time(sim))]])
+        sim$simPdeLand[[paste0("Year", time(sim))]] <- c(sim$fixedLand, sim$simLand)
         
-        if (!all(allInMemory))
-          stop("Something went wrong when bringing rasters to memory to save. Please debug.")
-        
-        ###### End assertion
-        layersName <- file.path(outputPath(sim), paste0("caribouLayers_year",
+        layersName <- file.path(outputPath(sim), paste0("pdeLayers_year",
                                                         time(sim),
-                                                        "_", runName, ".tif"))
+                                                        "_", ".tif"))
         
-        writeRaster(sim$caribouLayers[[paste0("Year", time(sim))]],
+        writeRaster(sim$simPdeLand[[paste0("Year", time(sim))]],
                     filename = layersName,
                     format = "GTiff",
                     overwrite = TRUE)
         
         message(crayon::green(paste0("Caribou layers successfully saved as: ",
                                      layersName)))
+        
+        # schedule future event(s)
+        sim <- scheduleEvent(sim, time(sim) + P(sim)$predictionInterval, "caribou_SSUD", "simLayers")
+        if (P(sim)$predictLastYear){
+          if (all(time(sim) == start(sim), (end(sim)-start(sim)) != 0))
+            sim <- scheduleEvent(sim, end(sim), "caribou_SSUD", "simLayers")
+        }
+      
+        }
+    },
+    
+    calcSimPde = {
+      if (P(sim)$simulationProcess == "dynamic" & time(sim)> P(sim)$disturbYear){
+        # calculate the pde UD following Potts and Schlaegel
+        sim$simPde[[paste0("Year", time(sim))]] <- make_pde(sim$issaBetasTable, sim$simPdeLand) 
+        
+        # make binned map of pde
+        sim$simPdeMap <- make_pde_map(sim$simPde, sim$studyArea_4maps)
+        plot(sim$simPdeMap, breaks=0:10, main = paste0("Year", time(sim)))
+        
+        # TODO we should make this be able to go through 
+        layersName <- file.path(outputPath(sim), paste0("pdeMap", "_year",
+                                                        time(sim),
+                                                        "_", ".tif"))
+        
+        writeRaster(sim$simPdeLand[[paste0("Year", time(sim))]],
+                    filename = layersName,
+                    format = "GTiff",
+                    overwrite = TRUE)
       }
       
-      # schedule future event(s)
-      sim <- scheduleEvent(sim, time(sim) + P(sim)$predictionInterval, "caribouRSF_NT", "preparingLayers")
-      if (P(sim)$predictLastYear){
-        if (all(time(sim) == start(sim), (end(sim)-start(sim)) != 0))
-          sim <- scheduleEvent(sim, end(sim), "caribouRSF_NT", "preparingLayers")
-      }
-    },
+    }
+    
     plot = {
       # ! ----- EDIT BELOW ----- ! #
       # do stuff for this event
