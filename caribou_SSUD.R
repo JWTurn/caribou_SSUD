@@ -31,6 +31,9 @@ defineModule(sim, list(
                     paste0("Should the simulation use LandR (dynamic) or land cover map (static)?",
                            "defaults to static")),
     defineParameter("predictionInterval", "numeric", 10, NA, NA, "Time between predictions"),
+    defineParameter("predictStartYear", "numeric", 2025, NA, NA,
+                    paste0("The first year to start forecasted simulations if dynamic.",
+                           " This is because we start forecasting landcovers earlier.")),
     defineParameter("predictLastYear", "logical", TRUE, NA, NA,
                     paste0("If last year of simulation is not multiple of",
                            " predictionInterval, should it predict for the last year too?")),
@@ -116,25 +119,30 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       sim$pdeLand <- load_map_layers(propLC = sim$propLand, lfOther = sim$lfUnpaved, 
                                      lfPaved = sim$lfPaved, disturbOther= sim$disturbOther, 
                                      fire = sim$historicalFires, harv = sim$harv, 
-                                     year = P(sim)$disturbYear, ts_else = P(sim)$ts_else)
+                                     year = P(sim)$disturbYear, ts_else = P(sim)$ts_else)|>
+        Cache(userTags =c('prepped land layers'))
       
      
       # create table of betas from model
-      sim$issaBetasTable <- make_betas_tab(sim$issaModel)
+      sim$issaBetasTable <- make_betas_tab(sim$issaModel)|>
+        Cache(userTags =c('make betas table'))
       
       # calculate the pde UD following Potts and Schlaegel
-      sim$pde <- make_pde(sim$issaBetasTable, sim$pdeLand) 
+      sim$pde <- make_pde(sim$issaBetasTable, sim$pdeLand) |>
+        Cache(userTags =c('static pde'))
       
       # make binned map of pde
-      sim$pdeMap <- make_pde_map(sim$pde, sim$studyArea_4maps)
+      sim$pdeMap <- make_pde_map(sim$pde, sim$studyArea_4maps)|>
+        Cache(userTags =c('static pde map'))
       plot(sim$pdeMap, breaks=0:10)
       
       writeRaster(sim$pdeMap, file.path(outputPath(sim), paste0('pde_global', P(sim)$disturbYear,'.tif')),
                   overwrite =TRUE)
       
       # schedule future event(s)
-      if(P(sim)$simulationProcess == "dynamic" & time(sim)> P(sim)$disturbYear){
-        sim <- scheduleEvent(sim, (time(sim)), "caribou_SSUD", "simLayers") 
+      if(P(sim)$simulationProcess == "dynamic" & time(sim) == P(sim)$predictStartYear){
+        sim <- scheduleEvent(sim, (time(sim)), "caribou_SSUD", "simLayers")
+        sim <- scheduleEvent(sim, (time(sim)), "caribou_SSUD", "calcSimPde")
       }
       
       # sim <- scheduleEvent(sim, P(sim)$.plotInitialTime, "caribou_SSUD", "plot")
@@ -142,19 +150,24 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     },
     
     simLayers = {
-      if (P(sim)$simulationProcess == "dynamic" & time(sim)> P(sim)$disturbYear){
+      if (P(sim)$simulationProcess == "dynamic" & time(sim) == P(sim)$predictStartYear){
         
         reclassForest <- reclassifyCohortData(cohortData = sim$cohortData, sppEquivCol = "LandR",
-                                              pixelGroupMap = sim$pixelGroupMap, mixedForestCutoffs = c(0.33, 0.66))
+                                              pixelGroupMap = sim$pixelGroupMap, mixedForestCutoffs = c(0.33, 0.66)) |> 
+          Cache(userTags = c(paste0("Forest reclass ", time(sim))))
         prop_needleleaf <- resample(classify(reclassForest, from = c(210, 220, 230), to = c(1, 0, 0)),
-                                    sim$pdeLand$prop_veg, method = 'average')
+                                    sim$pdeLand$prop_veg, method = 'average')|> 
+          Cache(userTags = c(paste0("Proportion needleleaf ", time(sim))))
         prop_mixforest <- resample(classify(reclassForest, from = c(210, 220, 230), to = c(0, 1, 1)),
-                                    sim$pdeLand$prop_veg, method = 'average')
+                                    sim$pdeLand$prop_veg, method = 'average')|> 
+          Cache(userTags = c(paste0("Proportion mixed forest ", time(sim))))
         tsf <- sim$timeSinceFire
-        tsf[is.na(tsf)] <- P(sim)$ts_else
+        tsf[is.na(tsf)] <- P(sim)$ts_else|> 
+          Cache(userTags = c(paste0("Fill in missing time since fire data ", time(sim))))
         log_tsf <- log(tsf +1)
         tsh <- (time(sim) - sim$harv)
-        tsh[is.na(tsh)] <- P(sim)$ts_else
+        tsh[is.na(tsh)] <- P(sim)$ts_else|> 
+          Cache(userTags = c(paste0("Fill in missing time since harvest data ", time(sim))))
         log_tsh <- log(tsh + 1)
         
         sim$simLand <- c(prop_needleleaf, prop_mixforest, log_tsf, log_tsh)
@@ -165,8 +178,10 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
         names(sim$fixedLand) <- c('prop_veg', 'prop_wets', 'log_distlf', 
                          'log_distlfother', 'disturb')
         
+        
         #updated landcover for simulated PDEs
-        sim$simPdeLand[[paste0("Year", time(sim))]] <- c(sim$fixedLand, sim$simLand)
+        sim$simPdeLand[[paste0("Year", time(sim))]] <- c(sim$fixedLand, sim$simLand) |>
+          Cache(userTags = c(paste0('simPdeLand', time(sim))))
         
         layersName <- file.path(outputPath(sim), paste0("pdeLayers_year",
                                                         time(sim),
@@ -191,12 +206,14 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     },
     
     calcSimPde = {
-      if (P(sim)$simulationProcess == "dynamic" & time(sim)> P(sim)$disturbYear){
+      if (P(sim)$simulationProcess == "dynamic" & time(sim)== P(sim)$predictStartYear){
         # calculate the pde UD following Potts and Schlaegel
-        sim$simPde[[paste0("Year", time(sim))]] <- make_pde(sim$issaBetasTable, sim$simPdeLand) 
+        sim$simPde[[paste0("Year", time(sim))]] <- make_pde(sim$issaBetasTable, sim$simPdeLand) |>
+          Cache(userTags =c(paste0('simPde', time(sim))))
         
         # make binned map of pde
-        sim$simPdeMap <- make_pde_map(sim$simPde, sim$studyArea_4maps)
+        sim$simPdeMap <- make_pde_map(sim$simPde, sim$studyArea_4maps) |>
+          Cache(userTags =c(paste0('simPdeMap', time(sim))))
         plot(sim$simPdeMap, breaks=0:10, main = paste0("Year", time(sim)))
         
         # TODO we should make this be able to go through 
