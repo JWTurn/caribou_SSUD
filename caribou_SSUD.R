@@ -234,20 +234,20 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
         }
       }
       
-    }
-    
-    plot = {
-      # ! ----- EDIT BELOW ----- ! #
-      # do stuff for this event
-      
-      
-      # schedule future event(s)
-      
-      # e.g.,
-      #sim <- scheduleEvent(sim, time(sim) + P(sim)$.plotInterval, "caribou_SSUD", "plot")
-      
-      # ! ----- STOP EDITING ----- ! #
     },
+    
+    # plot = {
+    #   # ! ----- EDIT BELOW ----- ! #
+    #   # do stuff for this event
+    #   
+    #   
+    #   # schedule future event(s)
+    #   
+    #   # e.g.,
+    #   #sim <- scheduleEvent(sim, time(sim) + P(sim)$.plotInterval, "caribou_SSUD", "plot")
+    #   
+    #   # ! ----- STOP EDITING ----- ! #
+    # },
     # save = {
     #   # ! ----- EDIT BELOW ----- ! #
     #   # do stuff for this event
