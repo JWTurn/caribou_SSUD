@@ -81,7 +81,7 @@ defineModule(sim, list(
     expectsInput(objectName = 'harv', objectClass = 'SpatRaster', 
                  desc = 'Rasterized year of last harvest based on NBAC. Default if not provided is 2020 at 30m resolution', 
                  sourceURL = 'https://drive.google.com/file/d/1yF-oIARALj6NRdCOn7a3gLZu8Gi9T2QK'),
-    expectsInput(objectName = 'modelOutput', objectClass = 'glmmTMB', 
+    expectsInput(objectName = 'issaModel', objectClass = 'glmmTMB', 
                  desc = '`glmmTMB` model output for iSSA. If none provided, default is the global 2015 WBI model.', 
                  sourceURL = 'https://drive.google.com/file/d/16V6bMUC42GdHVx0Kep0IotItBxyKQLYN/view?usp=share_link'),
     expectsInput("cohortData", "data.table",
@@ -97,6 +97,8 @@ defineModule(sim, list(
     ),
   outputObjects = bindrows(
     #createsOutput("objectName", "objectClass", "output object description", ...),
+    createsOutput(objectName = 'issaBetasTable', objectClass = 'data.table', 
+                  desc = 'data.table of modelled betas'),
     createsOutput(objectName = 'pdeLand', objectClass = 'SpatRaster', 
                   desc = 'Stack of all layers for pde calculation'),
     createsOutput(objectName = 'pde', objectClass = 'SpatRaster', 
@@ -427,7 +429,7 @@ plotFun <- function(sim) {
   if (!suppliedElsewhere("modelOutput", sim)){
     sim$issaModel <- Cache(prepInputs,
                            targetFile = "mod_selmove_2015-2020_HPC_noTA.RDS",
-                           url = extractURL("modelOutput"),
+                           url = extractURL("issaModel"),
                            destinationPath = dataPath(sim),
                            fun = "readRDS",
                            userTags = c("object:modelOutput"))
