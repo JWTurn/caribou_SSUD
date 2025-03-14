@@ -216,7 +216,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
         # make binned map of pde
         sim$simPdeMap <- make_pde_map(sim$simPde, sim$studyArea_4maps) |>
           Cache(userTags =c(paste0('simPdeMap', time(sim))))
-        plot(sim$simPdeMap, breaks=0:10, main = paste0("Year", time(sim)))
+        terra::plot(sim$simPdeMap, breaks=0:10, main = paste0("Year", time(sim)))
         
         # TODO we should make this be able to go through 
         layersName <- file.path(outputPath(sim), paste0("pdeMap", "_year",
