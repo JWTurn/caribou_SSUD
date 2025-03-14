@@ -136,7 +136,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       # make binned map of pde
       sim$pdeMap <- make_pde_map(sim$pde, sim$studyArea_4maps)|>
         Cache(userTags =c('static pde map'))
-      plot(sim$pdeMap)
+      terra::plot(sim$pdeMap, breaks = 0:10)
       
       writeRaster(sim$pdeMap, file.path(outputPath(sim), paste0('pde_global', P(sim)$disturbYear,'.tif')),
                   overwrite =TRUE)
