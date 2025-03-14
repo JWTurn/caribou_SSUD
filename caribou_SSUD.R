@@ -16,7 +16,7 @@ defineModule(sim, list(
   citation = list("citation.bib"),
   documentation = list("NEWS.md", "README.md", "caribou_SSUD.Rmd"),
   reqdPkgs = list("SpaDES.core (>= 2.1.5.9002)", "ggplot2", 'Require', 'reproducible', 'data.table', 'terra','sf',
-                  'glmmTMB', 'viridis', 'RColorBrewer',
+                  'glmmTMB', 'broom.mixed', 'viridis', 'RColorBrewer',
                   'tidyterra', 'patchwork'),
   parameters = bindrows(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
