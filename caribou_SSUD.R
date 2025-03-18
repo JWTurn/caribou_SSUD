@@ -104,6 +104,12 @@ defineModule(sim, list(
     createsOutput(objectName = 'pde', objectClass = 'SpatRaster', 
                   desc = 'Raw pde calculation'),
     createsOutput(objectName = 'pdeMap', objectClass = 'SpatRaster', 
+                  desc = 'Binned map of pde UD for intensity of selection'),
+    createsOutput(objectName = 'simPdeLand', objectClass = 'SpatRaster', 
+                  desc = 'Stack of all layers for simulated pde calculation'),
+    createsOutput(objectName = 'simPde', objectClass = 'SpatRaster', 
+                  desc = 'Raw pde calculation from sim layers'),
+    createsOutput(objectName = 'simPdeMap', objectClass = 'SpatRaster', 
                   desc = 'Binned map of pde UD for intensity of selection')
     
   )
