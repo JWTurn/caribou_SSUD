@@ -148,9 +148,12 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
                   overwrite =TRUE)
       
       # schedule future event(s)
-      if(P(sim)$simulationProcess == "dynamic" & time(sim) == P(sim)$predictStartYear){
-        sim <- scheduleEvent(sim, (time(sim)), "caribou_SSUD", "simLayers")
-        sim <- scheduleEvent(sim, (time(sim)), "caribou_SSUD", "calcSimPde")
+      if(P(sim)$simulationProcess == "dynamic"){
+        sim <- scheduleEvent(sim,  P(sim)$predictStartYear, "caribou_SSUD", "simLayers")
+        sim <- scheduleEvent(sim,  P(sim)$predictStartYear, "caribou_SSUD", "calcSimPde")
+      }
+      if (P(sim)$predictLastYear){
+          sim <- scheduleEvent(sim, end(sim), "caribou_SSUD", "simLayers")
       }
       
       # sim <- scheduleEvent(sim, P(sim)$.plotInitialTime, "caribou_SSUD", "plot")
@@ -158,7 +161,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     },
     
     simLayers = {
-      if (P(sim)$simulationProcess == "dynamic" & time(sim) == P(sim)$predictStartYear){
+      
         
         reclassForest <- reclassifyCohortData(cohortData = sim$cohortData, sppEquivCol = "LandR",
                                               pixelGroupMap = sim$pixelGroupMap, mixedForestCutoffs = c(0.33, 0.66)) |> 
@@ -193,7 +196,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
         
         layersName <- file.path(outputPath(sim), paste0("pdeLayers_year",
                                                         time(sim),
-                                                        "_", ".tif"))
+                                                         ".tif"))
         
         writeRaster(sim$simPdeLand[[paste0("Year", time(sim))]],
                     filename = layersName,
@@ -205,16 +208,12 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
         
         # schedule future event(s)
         sim <- scheduleEvent(sim, time(sim) + P(sim)$predictionInterval, "caribou_SSUD", "simLayers")
-        if (P(sim)$predictLastYear){
-          if (all(time(sim) == start(sim), (end(sim)-start(sim)) != 0))
-            sim <- scheduleEvent(sim, end(sim), "caribou_SSUD", "simLayers")
-        }
+        
       
-        }
+        
     },
     
     calcSimPde = {
-      if (P(sim)$simulationProcess == "dynamic" & time(sim)== P(sim)$predictStartYear){
         # calculate the pde UD following Potts and Schlaegel
         sim$simPde[[paste0("Year", time(sim))]] <- make_pde(sim$issaBetasTable, sim$simPdeLand) |>
           Cache(userTags =c(paste0('simPde', time(sim))))
@@ -227,7 +226,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
         # TODO we should make this be able to go through 
         layersName <- file.path(outputPath(sim), paste0("pdeMap", "_year",
                                                         time(sim),
-                                                        "_", ".tif"))
+                                                         ".tif"))
         
         writeRaster(sim$simPdeMap[[paste0("Year", time(sim))]],
                     filename = layersName,
@@ -236,11 +235,8 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
         
         # schedule future event(s)
         sim <- scheduleEvent(sim, time(sim) + P(sim)$predictionInterval, "caribou_SSUD", "calcSimPde")
-        if (P(sim)$predictLastYear){
-          if (all(time(sim) == start(sim), (end(sim)-start(sim)) != 0))
-            sim <- scheduleEvent(sim, end(sim), "caribou_SSUD", "calcSimPde")
-        }
-      }
+        
+      
       
     },
     
