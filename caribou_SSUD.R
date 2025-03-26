@@ -166,19 +166,19 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
         reclassForest <- reclassifyCohortData(cohortData = sim$cohortData, sppEquivCol = "LandR",
                                               pixelGroupMap = sim$pixelGroupMap, mixedForestCutoffs = c(0.33, 0.66)) |> 
           Cache(userTags = c(paste0("Forest reclass ", time(sim))))
-        prop_needleleaf <- resample(classify(reclassForest, from = c(210, 220, 230), to = c(1, 0, 0)),
+        prop_needleleaf <- resample(classify(reclassForest, cbind(from = c(210, 220, 230), to = c(1, 0, 0))),
                                     sim$pdeLand$prop_veg, method = 'average')|> 
           Cache(userTags = c(paste0("Proportion needleleaf ", time(sim))))
-        prop_mixforest <- resample(classify(reclassForest, from = c(210, 220, 230), to = c(0, 1, 1)),
+        prop_mixforest <- resample(classify(reclassForest, cbind(from = c(210, 220, 230), to = c(0, 1, 1))),
                                     sim$pdeLand$prop_veg, method = 'average')|> 
           Cache(userTags = c(paste0("Proportion mixed forest ", time(sim))))
         tsf <- sim$timeSinceFire
-        tsf[is.na(tsf)] <- P(sim)$ts_else|> 
-          Cache(userTags = c(paste0("Fill in missing time since fire data ", time(sim))))
+        tsf[is.na(tsf)] <- P(sim)$ts_else #|> 
+          #Cache(userTags = c(paste0("Fill in missing time since fire data ", time(sim))))
         log_tsf <- log(tsf +1)
         tsh <- (time(sim) - sim$harv)
-        tsh[is.na(tsh)] <- P(sim)$ts_else|> 
-          Cache(userTags = c(paste0("Fill in missing time since harvest data ", time(sim))))
+        tsh[is.na(tsh)] <- P(sim)$ts_else#|> 
+         # Cache(userTags = c(paste0("Fill in missing time since harvest data ", time(sim))))
         log_tsh <- log(tsh + 1)
         
         sim$simLand <- c(prop_needleleaf, prop_mixforest, log_tsf, log_tsh)
