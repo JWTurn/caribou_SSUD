@@ -162,7 +162,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     
     simLayers = {
       
-      layers.crop <- postProcess(sim$pdeLand, sim$pixelGroupMap)
+      layers.crop <- cropTo(sim$pdeLand, sim$pixelGroupMap)
       reclassForest <- reclassifyCohortData(cohortData = sim$cohortData, sppEquivCol = "LandR",
                                             pixelGroupMap = sim$pixelGroupMap, mixedForestCutoffs = c(0.33, 0.66)) |> 
         Cache(userTags = c(paste0("Forest reclass ", time(sim))))
@@ -177,7 +177,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       tsf[is.na(tsf)] <- P(sim)$ts_else #|> 
       #Cache(userTags = c(paste0("Fill in missing time since fire data ", time(sim))))
       log_tsf <- log(tsf +1)
-      tsh <- (time(sim) - postProcess(sim$harv, sim$pixelGroupMap))
+      tsh <- (time(sim) - cropTo(sim$harv, sim$pixelGroupMap))
       tsh[is.na(tsh)] <- P(sim)$ts_else#|> 
       # Cache(userTags = c(paste0("Fill in missing time since harvest data ", time(sim))))
       log_tsh <- log(tsh + 1)
