@@ -30,7 +30,7 @@ defineModule(sim, list(
     defineParameter("simulationProcess", "character", "static", NA, NA,
                     paste0("Should the simulation use LandR (dynamic) or land cover map (static)?",
                            "defaults to static")),
-    defineParameter("predictionInterval", "numeric", 10, NA, NA, "Time between predictions"),
+    defineParameter("predictionInterval", "numeric", 5, NA, NA, "Time between predictions"),
     defineParameter("predictStartYear", "numeric", 2025, NA, NA,
                     paste0("The first year to start forecasted simulations if dynamic.",
                            " This is because we start forecasting landcovers earlier.")),
@@ -154,6 +154,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       }
       if (P(sim)$predictLastYear){
         sim <- scheduleEvent(sim, end(sim), "caribou_SSUD", "simLayers")
+        sim <- scheduleEvent(sim, end(sim), "caribou_SSUD", "calcSimPde")
       }
       
       # sim <- scheduleEvent(sim, P(sim)$.plotInitialTime, "caribou_SSUD", "plot")
@@ -162,9 +163,10 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     
     simLayers = {
       
-      layers.crop <- cropTo(sim$pdeLand, sim$pixelGroupMap)
-      reclassForest <- reclassifyCohortData(cohortData = sim$cohortData, sppEquivCol = "LandR",
-                                            pixelGroupMap = sim$pixelGroupMap, mixedForestCutoffs = c(0.33, 0.66)) |> 
+      layers.crop <- postProcess(sim$pdeLand, sim$rasterToMatchLarge)
+      reclassForest <- postProcess(reclassifyCohortData(cohortData = sim$cohortData, sppEquivCol = "LandR",
+                                                        pixelGroupMap = sim$pixelGroupMap, mixedForestCutoffs = c(0.33, 0.66)),
+                                   sim$rasterToMatchLarge) |> 
         Cache(userTags = c(paste0("Forest reclass ", time(sim))))
       
       prop_needleleaf <- terra::resample(classify(reclassForest$`forest type`, cbind(from = c(210, 220, 230), to = c(1, 0, 0))),
@@ -173,11 +175,11 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       prop_mixforest <- terra::resample(classify(reclassForest$`forest type`, cbind(from = c(210, 220, 230), to = c(0, 1, 1))),
                                         layers.crop$prop_veg, method = 'average')|> 
         Cache(userTags = c(paste0("Proportion mixed forest ", time(sim))))
-      tsf <- sim$timeSinceFire
+      tsf <- postProcess(sim$timeSinceFire, sim$rasterToMatchLarge)
       tsf[is.na(tsf)] <- P(sim)$ts_else #|> 
       #Cache(userTags = c(paste0("Fill in missing time since fire data ", time(sim))))
       log_tsf <- log(tsf +1)
-      tsh <- (time(sim) - cropTo(sim$harv, sim$pixelGroupMap))
+      tsh <- (time(sim) - postProcess(sim$harv, sim$rasterToMatchLarge))
       tsh[is.na(tsh)] <- P(sim)$ts_else#|> 
       # Cache(userTags = c(paste0("Fill in missing time since harvest data ", time(sim))))
       log_tsh <- log(tsh + 1)
