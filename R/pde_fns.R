@@ -41,7 +41,7 @@ make_pde <- function(mod.tab, land, saveName = NULL){
   
   
   # the normalizing constant.
-  C <- global(numerator, sum, na.rm = T)
+  C <- terra::global(numerator, sum, na.rm = T)
   pde <- numerator/C[[1]]
   
   if(!is.null(saveName)){
@@ -58,10 +58,10 @@ make_pde_map <- function(pde, sArea, saveName = NULL){
   pde.sa <- crop(pde, sArea, mask = T)
   
   
-  breaks <- global(pde.sa, quantile, na.rm = T, probs = seq(0,1,.1))
+  breaks <- terra::global(pde.sa, quantile, na.rm = T, probs = seq(0,1,.1))
   v.breaks <- unname(breaks)
   t.breaks <- as.vector(t(v.breaks))
-  pde.discrete <- classify(pde.sa, t.breaks, include.lowest=TRUE, brackets=TRUE)
+  pde.discrete <- terra::classify(pde.sa, t.breaks, include.lowest=TRUE, brackets=TRUE)
   
   if(!is.null(saveName)){
     writeRaster(pde.discrete, 

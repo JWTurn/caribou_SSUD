@@ -93,8 +93,8 @@ defineModule(sim, list(
                               "based on identical `ecoregionGroup`, `speciesCode`, `age` and `B` composition,",
                               "even if the user supplies other initial groupings (e.g., via the `Biomass_borealDataPrep`",
                               "module."))
-  
-    ),
+    
+  ),
   outputObjects = bindrows(
     #createsOutput("objectName", "objectClass", "output object description", ...),
     createsOutput(objectName = 'issaBetasTable', objectClass = 'data.table', 
@@ -130,7 +130,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
                                      year = P(sim)$disturbYear, ts_else = P(sim)$ts_else)|>
         Cache(userTags =c('prepped land layers'))
       
-     
+      
       # create table of betas from model
       sim$issaBetasTable <- make_betas_tab(sim$issaModel)|>
         Cache(userTags =c('make betas table'))
@@ -153,7 +153,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
         sim <- scheduleEvent(sim,  P(sim)$predictStartYear, "caribou_SSUD", "calcSimPde")
       }
       if (P(sim)$predictLastYear){
-          sim <- scheduleEvent(sim, end(sim), "caribou_SSUD", "simLayers")
+        sim <- scheduleEvent(sim, end(sim), "caribou_SSUD", "simLayers")
       }
       
       # sim <- scheduleEvent(sim, P(sim)$.plotInitialTime, "caribou_SSUD", "plot")
@@ -162,80 +162,80 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     
     simLayers = {
       
-        
-        reclassForest <- reclassifyCohortData(cohortData = sim$cohortData, sppEquivCol = "LandR",
-                                              pixelGroupMap = sim$pixelGroupMap, mixedForestCutoffs = c(0.33, 0.66)) |> 
-          Cache(userTags = c(paste0("Forest reclass ", time(sim))))
-        prop_needleleaf <- resample(classify(reclassForest, cbind(from = c(210, 220, 230), to = c(1, 0, 0))),
-                                    sim$pdeLand$prop_veg, method = 'average')|> 
-          Cache(userTags = c(paste0("Proportion needleleaf ", time(sim))))
-        prop_mixforest <- resample(classify(reclassForest, cbind(from = c(210, 220, 230), to = c(0, 1, 1))),
-                                    sim$pdeLand$prop_veg, method = 'average')|> 
-          Cache(userTags = c(paste0("Proportion mixed forest ", time(sim))))
-        tsf <- sim$timeSinceFire
-        tsf[is.na(tsf)] <- P(sim)$ts_else #|> 
-          #Cache(userTags = c(paste0("Fill in missing time since fire data ", time(sim))))
-        log_tsf <- log(tsf +1)
-        tsh <- (time(sim) - sim$harv)
-        tsh[is.na(tsh)] <- P(sim)$ts_else#|> 
-         # Cache(userTags = c(paste0("Fill in missing time since harvest data ", time(sim))))
-        log_tsh <- log(tsh + 1)
-        
-        sim$simLand <- c(prop_needleleaf, prop_mixforest, log_tsf, log_tsh)
-        names(sim$simLand) <- c('prop_needleleaf', 'prop_mixforest', 'log_tsf', 'log_tsh')
-        
-        sim$fixedLand <- c(sim$pdeLand$prop_veg, sim$pdeLand$prop_wets, sim$pdeLand$log_distlf, 
-                           sim$pdeLand$log_distlfother, sim$pdeLand$disturb)
-        names(sim$fixedLand) <- c('prop_veg', 'prop_wets', 'log_distlf', 
-                         'log_distlfother', 'disturb')
-        
-        
-        #updated landcover for simulated PDEs
-        sim$simPdeLand[[paste0("Year", time(sim))]] <- c(sim$fixedLand, sim$simLand) |>
-          Cache(userTags = c(paste0('simPdeLand', time(sim))))
-        
-        layersName <- file.path(outputPath(sim), paste0("pdeLayers_year",
-                                                        time(sim),
-                                                         ".tif"))
-        
-        writeRaster(sim$simPdeLand[[paste0("Year", time(sim))]],
-                    filename = layersName,
-                    format = "GTiff",
-                    overwrite = TRUE)
-        
-        message(crayon::green(paste0("Caribou layers successfully saved as: ",
-                                     layersName)))
-        
-        # schedule future event(s)
-        sim <- scheduleEvent(sim, time(sim) + P(sim)$predictionInterval, "caribou_SSUD", "simLayers")
-        
+      layers.crop <- postProcess(sim$pdeLand, sim$pixelGroupMap)
+      reclassForest <- reclassifyCohortData(cohortData = sim$cohortData, sppEquivCol = "LandR",
+                                            pixelGroupMap = sim$pixelGroupMap, mixedForestCutoffs = c(0.33, 0.66)) |> 
+        Cache(userTags = c(paste0("Forest reclass ", time(sim))))
       
-        
+      prop_needleleaf <- terra::resample(classify(reclassForest$`forest type`, cbind(from = c(210, 220, 230), to = c(1, 0, 0))),
+                                         layers.crop$prop_veg, method = 'average')|> 
+        Cache(userTags = c(paste0("Proportion needleleaf ", time(sim))))
+      prop_mixforest <- terra::resample(classify(reclassForest$`forest type`, cbind(from = c(210, 220, 230), to = c(0, 1, 1))),
+                                        layers.crop$prop_veg, method = 'average')|> 
+        Cache(userTags = c(paste0("Proportion mixed forest ", time(sim))))
+      tsf <- sim$timeSinceFire
+      tsf[is.na(tsf)] <- P(sim)$ts_else #|> 
+      #Cache(userTags = c(paste0("Fill in missing time since fire data ", time(sim))))
+      log_tsf <- log(tsf +1)
+      tsh <- (time(sim) - postProcess(sim$harv, sim$pixelGroupMap))
+      tsh[is.na(tsh)] <- P(sim)$ts_else#|> 
+      # Cache(userTags = c(paste0("Fill in missing time since harvest data ", time(sim))))
+      log_tsh <- log(tsh + 1)
+      
+      sim$simLand <- c(prop_needleleaf, prop_mixforest, log_tsf, log_tsh)
+      names(sim$simLand) <- c('prop_needleleaf', 'prop_mixforest', 'log_tsf', 'log_tsh')
+      
+      sim$fixedLand <- c(layers.crop$prop_veg, layers.crop$prop_wets, layers.crop$log_distlf, 
+                         layers.crop$log_distlfother, layers.crop$disturb)
+      names(sim$fixedLand) <- c('prop_veg', 'prop_wets', 'log_distlf', 
+                                'log_distlfother', 'disturb')
+      
+      
+      #updated landcover for simulated PDEs
+      sim$simPdeLand[[paste0("Year", time(sim))]] <- c(sim$fixedLand, sim$simLand) |>
+        Cache(userTags = c(paste0('simPdeLand', time(sim))))
+      
+      layersName <- file.path(outputPath(sim), paste0("pdeLayers_year",
+                                                      time(sim),
+                                                      ".tif"))
+      
+      writeRaster(sim$simPdeLand[[paste0("Year", time(sim))]],
+                  filename = layersName,
+                  overwrite = TRUE)
+      
+      message(crayon::green(paste0("Caribou layers successfully saved as: ",
+                                   layersName)))
+      
+      # schedule future event(s)
+      sim <- scheduleEvent(sim, time(sim) + P(sim)$predictionInterval, "caribou_SSUD", "simLayers")
+      
+      
+      
     },
     
     calcSimPde = {
-        # calculate the pde UD following Potts and Schlaegel
-        sim$simPde[[paste0("Year", time(sim))]] <- make_pde(sim$issaBetasTable, sim$simPdeLand) |>
-          Cache(userTags =c(paste0('simPde', time(sim))))
-        
-        # make binned map of pde
-        sim$simPdeMap <- make_pde_map(sim$simPde, sim$studyArea_4maps) |>
-          Cache(userTags =c(paste0('simPdeMap', time(sim))))
-        terra::plot(sim$simPdeMap, breaks=0:10, main = paste0("Year", time(sim)))
-        
-        # TODO we should make this be able to go through 
-        layersName <- file.path(outputPath(sim), paste0("pdeMap", "_year",
-                                                        time(sim),
-                                                         ".tif"))
-        
-        writeRaster(sim$simPdeMap[[paste0("Year", time(sim))]],
-                    filename = layersName,
-                    format = "GTiff",
-                    overwrite = TRUE)
-        
-        # schedule future event(s)
-        sim <- scheduleEvent(sim, time(sim) + P(sim)$predictionInterval, "caribou_SSUD", "calcSimPde")
-        
+      
+      # calculate the pde UD following Potts and Schlaegel
+      sim$simPde[[paste0("Year", time(sim))]] <- make_pde(sim$issaBetasTable, sim$simPdeLand[[paste0("Year", time(sim))]]) |>
+        Cache(userTags =c(paste0('simPde', time(sim))))
+      
+      # make binned map of pde
+      sim$simPdeMap[[paste0("Year", time(sim))]] <- make_pde_map(sim$simPde[[paste0("Year", time(sim))]], sim$studyArea_4maps) |>
+        Cache(userTags =c(paste0('simPdeMap', time(sim))))
+      terra::plot(sim$simPdeMap[[paste0("Year", time(sim))]], breaks=0:10, main = paste0("Year", time(sim)))
+      
+      # TODO we should make this be able to go through 
+      layersName <- file.path(outputPath(sim), paste0("pdeMap", "_year",
+                                                      time(sim),
+                                                      ".tif"))
+      
+      writeRaster(sim$simPdeMap[[paste0("Year", time(sim))]],
+                  filename = layersName,
+                  overwrite = TRUE)
+      
+      # schedule future event(s)
+      sim <- scheduleEvent(sim, time(sim) + P(sim)$predictionInterval, "caribou_SSUD", "calcSimPde")
+      
       
       
     },
@@ -303,7 +303,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
 ### template initialization
 Init <- function(sim) {
   # # ! ----- EDIT BELOW ----- ! #
- 
+  
   # ! ----- STOP EDITING ----- ! #
   
   return(invisible(sim))
@@ -322,7 +322,7 @@ Init <- function(sim) {
 plotFun <- function(sim) {
   # ! ----- EDIT BELOW ----- ! #
   # do stuff for this event
-
+  
   
   # ! ----- STOP EDITING ----- ! #
   return(invisible(sim))
@@ -398,10 +398,10 @@ plotFun <- function(sim) {
   
   if (!suppliedElsewhere("lfUnpaved", sim)){
     sim$lfUnpaved <- Cache(prepInputs,
-                          url = extractURL("lfUnpaved"),
-                          destinationPath = dataPath(sim),
-                          fun = "terra::rast",
-                          userTags = c("object:lfUnaved"))
+                           url = extractURL("lfUnpaved"),
+                           destinationPath = dataPath(sim),
+                           fun = "terra::rast",
+                           userTags = c("object:lfUnaved"))
   }
   
   if (!suppliedElsewhere("disturbOther", sim)){
