@@ -162,53 +162,53 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     
     simLayers = {
       
-        
-        reclassForest <- reclassifyCohortData(cohortData = sim$cohortData, sppEquivCol = "LandR",
-                                              pixelGroupMap = sim$pixelGroupMap, mixedForestCutoffs = c(0.33, 0.66)) |> 
-          Cache(userTags = c(paste0("Forest reclass ", time(sim))))
-        prop_needleleaf <- resample(classify(reclassForest, cbind(from = c(210, 220, 230), to = c(1, 0, 0))),
-                                    sim$pdeLand$prop_veg, method = 'average')|> 
-          Cache(userTags = c(paste0("Proportion needleleaf ", time(sim))))
-        prop_mixforest <- resample(classify(reclassForest, cbind(from = c(210, 220, 230), to = c(0, 1, 1))),
-                                    sim$pdeLand$prop_veg, method = 'average')|> 
-          Cache(userTags = c(paste0("Proportion mixed forest ", time(sim))))
-        tsf <- sim$timeSinceFire
-        tsf[is.na(tsf)] <- P(sim)$ts_else #|> 
-          #Cache(userTags = c(paste0("Fill in missing time since fire data ", time(sim))))
-        log_tsf <- log(tsf +1)
-        tsh <- (time(sim) - sim$harv)
-        tsh[is.na(tsh)] <- P(sim)$ts_else#|> 
-         # Cache(userTags = c(paste0("Fill in missing time since harvest data ", time(sim))))
-        log_tsh <- log(tsh + 1)
-        
-        sim$simLand <- c(prop_needleleaf, prop_mixforest, log_tsf, log_tsh)
-        names(sim$simLand) <- c('prop_needleleaf', 'prop_mixforest', 'log_tsf', 'log_tsh')
-        
-        sim$fixedLand <- c(sim$pdeLand$prop_veg, sim$pdeLand$prop_wets, sim$pdeLand$log_distlf, 
-                           sim$pdeLand$log_distlfother, sim$pdeLand$disturb)
-        names(sim$fixedLand) <- c('prop_veg', 'prop_wets', 'log_distlf', 
-                         'log_distlfother', 'disturb')
-        
-        
-        #updated landcover for simulated PDEs
-        sim$simPdeLand[[paste0("Year", time(sim))]] <- c(sim$fixedLand, sim$simLand) |>
-          Cache(userTags = c(paste0('simPdeLand', time(sim))))
-        
-        layersName <- file.path(outputPath(sim), paste0("pdeLayers_year",
-                                                        time(sim),
-                                                         ".tif"))
-        
-        writeRaster(sim$simPdeLand[[paste0("Year", time(sim))]],
-                    filename = layersName,
-                    format = "GTiff",
-                    overwrite = TRUE)
-        
-        message(crayon::green(paste0("Caribou layers successfully saved as: ",
-                                     layersName)))
-        
-        # schedule future event(s)
-        sim <- scheduleEvent(sim, time(sim) + P(sim)$predictionInterval, "caribou_SSUD", "simLayers")
-        
+
+      reclassForest <- reclassifyCohortData(cohortData = sim$cohortData, sppEquivCol = "LandR",
+                                            pixelGroupMap = sim$pixelGroupMap, mixedForestCutoffs = c(0.33, 0.66))
+      prop_needleleaf <- terra::resample(classify(reclassForest$`forest type`, rcl = matrix(c(210, 220, 230, 1, 0, 0), ncol = 2)),
+                                         sim$pdeLand$prop_veg, method = 'average')
+      prop_mixforest <- terra::resample(classify(reclassForest$`forest type`,  rcl = matrix(c(210, 220, 230, 0, 1, 1), ncol = 2)),
+                                        sim$pdeLand$prop_veg, method = 'average')
+      tsf <- sim$timeSinceFire
+      tsf[is.na(tsf)] <- P(sim)$ts_else
+      log_tsf <- log(tsf +1)
+      browser()
+      # tsh <- (time(sim) - sim$harv)
+      tsh <- sim$harv
+      thisYear <- as.integer(time(sim))
+      tsh <- tsh[thisYear - tsh[]]
+      
+      tsh[is.na(tsh)] <- P(sim)$ts_else
+      log_tsh <- log(tsh + 1)
+      
+      sim$simLand <- c(prop_needleleaf, prop_mixforest, log_tsf, log_tsh)
+      names(sim$simLand) <- c('prop_needleleaf', 'prop_mixforest', 'log_tsf', 'log_tsh')
+      
+      sim$fixedLand <- c(sim$pdeLand$prop_veg, sim$pdeLand$prop_wets, sim$pdeLand$log_distlf, 
+                         sim$pdeLand$log_distlfother, sim$pdeLand$disturb)
+      names(sim$fixedLand) <- c('prop_veg', 'prop_wets', 'log_distlf', 
+                                'log_distlfother', 'disturb')
+      
+      
+      #updated landcover for simulated PDEs
+      sim$simPdeLand[[paste0("Year", time(sim))]] <- c(sim$fixedLand, sim$simLand) |>
+        Cache(userTags = c(paste0('simPdeLand', time(sim))))
+      
+      layersName <- file.path(outputPath(sim), paste0("pdeLayers_year",
+                                                      time(sim),
+                                                      ".tif"))
+      
+      writeRaster(sim$simPdeLand[[paste0("Year", time(sim))]],
+                  filename = layersName,
+                  format = "GTiff",
+                  overwrite = TRUE)
+      
+      message(crayon::green(paste0("Caribou layers successfully saved as: ",
+                                   layersName)))
+      
+      # schedule future event(s)
+      sim <- scheduleEvent(sim, time(sim) + P(sim)$predictionInterval, "caribou_SSUD", "simLayers")
+      
       
         
     },
