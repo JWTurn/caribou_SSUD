@@ -124,10 +124,11 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       
       # do stuff for this event
       # prep land layers for UD calculation/map
-      sim$pdeLand <- load_map_layers(propLC = sim$propLand, lfOther = sim$lfUnpaved, 
-                                     lfPaved = sim$lfPaved, disturbOther= sim$disturbOther, 
-                                     fire = sim$historicalFires, harv = sim$harv, 
-                                     year = P(sim)$disturbYear, ts_else = P(sim)$ts_else)|>
+      sim$pdeLand <- postProcess(load_map_layers(propLC = sim$propLand, lfOther = sim$lfUnpaved, 
+                                                 lfPaved = sim$lfPaved, disturbOther= sim$disturbOther, 
+                                                 fire = sim$historicalFires, harv = sim$harv, 
+                                                 year = P(sim)$disturbYear, ts_else = P(sim)$ts_else),
+                                 sim$rasterToMatchLargeCoarse)|>
         Cache(userTags =c('prepped land layers'))
       
       
@@ -163,23 +164,26 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     
     simLayers = {
       
-      layers.crop <- postProcess(sim$pdeLand, sim$rasterToMatchLarge)
+      
       reclassForest <- postProcess(reclassifyCohortData(cohortData = sim$cohortData, sppEquivCol = "LandR",
                                                         pixelGroupMap = sim$pixelGroupMap, mixedForestCutoffs = c(0.33, 0.66)),
-                                   sim$rasterToMatchLarge) |> 
-        Cache(userTags = c(paste0("Forest reclass ", time(sim))))
+                                   sim$rasterToMatchLarge)# |> 
+      # Cache(userTags = c(paste0("Forest reclass ", time(sim))))
+      reclassForest$`forest type`[is.na(reclassForest$`forest type`)] <- 0
       
       prop_needleleaf <- terra::resample(classify(reclassForest$`forest type`, cbind(from = c(210, 220, 230), to = c(1, 0, 0))),
-                                         layers.crop$prop_veg, method = 'average')|> 
-        Cache(userTags = c(paste0("Proportion needleleaf ", time(sim))))
+                                         sim$pdeLand$prop_veg, method = 'average')#|> 
+      # Cache(userTags = c(paste0("Proportion needleleaf ", time(sim))))
       prop_mixforest <- terra::resample(classify(reclassForest$`forest type`, cbind(from = c(210, 220, 230), to = c(0, 1, 1))),
-                                        layers.crop$prop_veg, method = 'average')|> 
-        Cache(userTags = c(paste0("Proportion mixed forest ", time(sim))))
-      tsf <- postProcess(sim$timeSinceFire, sim$rasterToMatchLarge)
+                                        sim$pdeLand$prop_veg, method = 'average')#|> 
+      # Cache(userTags = c(paste0("Proportion mixed forest ", time(sim))))
+      
+      tsf <- terra::resample(sim$timeSinceFire, sim$rasterToMatchLargeCoarse, 
+                             method = 'average')
       tsf[is.na(tsf)] <- P(sim)$ts_else #|> 
       #Cache(userTags = c(paste0("Fill in missing time since fire data ", time(sim))))
       log_tsf <- log(tsf +1)
-      tsh <- (time(sim) - postProcess(sim$harv, sim$rasterToMatchLarge))
+      tsh <- (time(sim) - postProcess(sim$harv, sim$rasterToMatchLargeCoarse))
       tsh[is.na(tsh)] <- P(sim)$ts_else#|> 
       # Cache(userTags = c(paste0("Fill in missing time since harvest data ", time(sim))))
       log_tsh <- log(tsh + 1)
@@ -187,15 +191,15 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       sim$simLand <- c(prop_needleleaf, prop_mixforest, log_tsf, log_tsh)
       names(sim$simLand) <- c('prop_needleleaf', 'prop_mixforest', 'log_tsf', 'log_tsh')
       
-      sim$fixedLand <- c(layers.crop$prop_veg, layers.crop$prop_wets, layers.crop$log_distlf, 
-                         layers.crop$log_distlfother, layers.crop$disturb)
+      sim$fixedLand <- c(sim$pdeLand$prop_veg, sim$pdeLand$prop_wets, sim$pdeLand$log_distlf, 
+                         sim$pdeLand$log_distlfother, sim$pdeLand$disturb)
       names(sim$fixedLand) <- c('prop_veg', 'prop_wets', 'log_distlf', 
                                 'log_distlfother', 'disturb')
       
       
       #updated landcover for simulated PDEs
-      sim$simPdeLand[[paste0("Year", time(sim))]] <- c(sim$fixedLand, sim$simLand) |>
-        Cache(userTags = c(paste0('simPdeLand', time(sim))))
+      sim$simPdeLand[[paste0("Year", time(sim))]] <- c(sim$fixedLand, sim$simLand) #|>
+      # Cache(userTags = c(paste0('simPdeLand', time(sim))))
       
       layersName <- file.path(outputPath(sim), paste0("pdeLayers_year",
                                                       time(sim),
@@ -218,12 +222,12 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     calcSimPde = {
       
       # calculate the pde UD following Potts and Schlaegel
-      sim$simPde[[paste0("Year", time(sim))]] <- make_pde(sim$issaBetasTable, sim$simPdeLand[[paste0("Year", time(sim))]]) |>
-        Cache(userTags =c(paste0('simPde', time(sim))))
+      sim$simPde[[paste0("Year", time(sim))]] <- make_pde(sim$issaBetasTable, sim$simPdeLand[[paste0("Year", time(sim))]]) #|>
+      # Cache(userTags =c(paste0('simPde', time(sim))))
       
       # make binned map of pde
-      sim$simPdeMap[[paste0("Year", time(sim))]] <- make_pde_map(sim$simPde[[paste0("Year", time(sim))]], sim$studyArea_4maps) |>
-        Cache(userTags =c(paste0('simPdeMap', time(sim))))
+      sim$simPdeMap[[paste0("Year", time(sim))]] <- make_pde_map(sim$simPde[[paste0("Year", time(sim))]], sim$studyArea_4maps)# |>
+      # Cache(userTags =c(paste0('simPdeMap', time(sim))))
       terra::plot(sim$simPdeMap[[paste0("Year", time(sim))]], breaks=0:10, main = paste0("Year", time(sim)))
       
       # TODO we should make this be able to go through 
