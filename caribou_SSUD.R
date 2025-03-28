@@ -30,7 +30,7 @@ defineModule(sim, list(
     defineParameter("simulationProcess", "character", "static", NA, NA,
                     paste0("Should the simulation use LandR (dynamic) or land cover map (static)?",
                            "defaults to static")),
-    defineParameter("predictionInterval", "numeric", 10, NA, NA, "Time between predictions"),
+    defineParameter("predictionInterval", "numeric", 5, NA, NA, "Time between predictions"),
     defineParameter("predictStartYear", "numeric", 2025, NA, NA,
                     paste0("The first year to start forecasted simulations if dynamic.",
                            " This is because we start forecasting landcovers earlier.")),
@@ -124,10 +124,11 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       
       # do stuff for this event
       # prep land layers for UD calculation/map
-      sim$pdeLand <- load_map_layers(propLC = sim$propLand, lfOther = sim$lfUnpaved, 
-                                     lfPaved = sim$lfPaved, disturbOther= sim$disturbOther, 
-                                     fire = sim$historicalFires, harv = sim$harv, 
-                                     year = P(sim)$disturbYear, ts_else = P(sim)$ts_else)|>
+      sim$pdeLand <- postProcess(load_map_layers(propLC = sim$propLand, lfOther = sim$lfUnpaved, 
+                                                 lfPaved = sim$lfPaved, disturbOther= sim$disturbOther, 
+                                                 fire = sim$historicalFires, harv = sim$harv, 
+                                                 year = P(sim)$disturbYear, ts_else = P(sim)$ts_else),
+                                 sim$rasterToMatchLargeCoarse)|>
         Cache(userTags =c('prepped land layers'))
       
       
