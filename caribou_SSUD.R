@@ -143,7 +143,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       # make binned map of pde
       sim$pdeMap <- make_pde_map(sim$pde, sim$studyArea_4maps)|>
         Cache(userTags =c('static pde map'))
-      terra::plot(sim$pdeMap, breaks = 0:10)
+      terra::plot(sim$pdeMap, breaks = 0:10, main = 'present 2020')
       
       writeRaster(sim$pdeMap, file.path(outputPath(sim), paste0('pde_global', P(sim)$disturbYear,'.tif')),
                   overwrite =TRUE)
@@ -163,17 +163,21 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     
     simLayers = {
       
-      layers.crop <- postProcess(sim$pdeLand, sim$pixelGroupMap)
+      
       reclassForest <- reclassifyCohortData(cohortData = sim$cohortData, sppEquivCol = "LandR",
                                             pixelGroupMap = sim$pixelGroupMap, mixedForestCutoffs = c(0.33, 0.66))
+      reclassForest$`forest type`[is.na(reclassForest$`forest type`)] <- 0
+      
       prop_needleleaf <- terra::resample(classify(reclassForest$`forest type`, rcl = matrix(c(210, 220, 230, 1, 0, 0), ncol = 2)),
                                          sim$pdeLand$prop_veg, method = 'average')
       prop_mixforest <- terra::resample(classify(reclassForest$`forest type`,  rcl = matrix(c(210, 220, 230, 0, 1, 1), ncol = 2)),
                                         sim$pdeLand$prop_veg, method = 'average')
-      tsf <- sim$timeSinceFire
+     
+      tsf <- terra::resample(sim$timeSinceFire, sim$rasterToMatchLargeCoarse, 
+                             method = 'average')
       tsf[is.na(tsf)] <- P(sim)$ts_else
       log_tsf <- log(tsf +1)
-      tsh <- sim$harv
+      tsh <- postProcess(sim$harv, sim$rasterToMatchLargeCoarse)
       thisYear <- as.integer(time(sim))
       tsh <- tsh[thisYear - tsh[]]
       
@@ -190,9 +194,8 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       
       
       #updated landcover for simulated PDEs
-      sim$simPdeLand[[paste0("Year", time(sim))]] <- c(sim$fixedLand, sim$simLand) |>
+      sim$simPdeLand[[paste0("Year", time(sim))]] <- c(sim$fixedLand, sim$simLand) 
       
-        Cache(userTags = c(paste0('simPdeLand', time(sim))))
       layersName <- file.path(outputPath(sim), paste0("pdeLayers_year",
                                                       time(sim),
                                                       ".tif"))
@@ -214,15 +217,13 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     calcSimPde = {
       
       # calculate the pde UD following Potts and Schlaegel
-      sim$simPde[[paste0("Year", time(sim))]] <- make_pde(sim$issaBetasTable, sim$simPdeLand[[paste0("Year", time(sim))]]) |>
-        Cache(userTags =c(paste0('simPde', time(sim))))
+      sim$simPde[[paste0("Year", time(sim))]] <- make_pde(sim$issaBetasTable, sim$simPdeLand[[paste0("Year", time(sim))]]) 
       
       # make binned map of pde
-      sim$simPdeMap[[paste0("Year", time(sim))]] <- make_pde_map(sim$simPde[[paste0("Year", time(sim))]], sim$studyArea_4maps) |>
-        Cache(userTags =c(paste0('simPdeMap', time(sim))))
-      terra::plot(sim$simPdeMap[[paste0("Year", time(sim))]], breaks=0:10, main = paste0("Year", time(sim)))
+      sim$simPdeMap[[paste0("Year", time(sim))]] <- make_pde_map(sim$simPde[[paste0("Year", time(sim))]], sim$studyArea_4maps)
       
-      # TODO we should make this be able to go through 
+      terra::plot(sim$simPdeMap[[paste0("Year", time(sim))]], breaks=0:10, main = paste0("Year", time(sim)))
+       
       layersName <- file.path(outputPath(sim), paste0("pdeMap", "_year",
                                                       time(sim),
                                                       ".tif"))
@@ -237,6 +238,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       
       
     },
+
     
     # plot = {
     #   # ! ----- EDIT BELOW ----- ! #
