@@ -420,6 +420,8 @@ plotFun <- function(sim) {
     sim$historicalFires <- Cache(prepInputs,
                                  url = extractURL("historicalFires"),
                                  destinationPath = dataPath(sim),
+                                 cropTo = sim$rasterToMatch,
+                                 maskTo = sim$studyArea,
                                  fun = "terra::rast",
                                  userTags = c("object:historicalFires"))
   }
@@ -427,6 +429,8 @@ plotFun <- function(sim) {
   if (!suppliedElsewhere("harv", sim)){
     sim$harv <- Cache(prepInputs,
                       url = extractURL("harv"),
+                      cropTo = sim$rasterToMatch, 
+                      maskTo = sim$studyArea,
                       destinationPath = dataPath(sim),
                       fun = "terra::rast",
                       userTags = c("object:harv"))
