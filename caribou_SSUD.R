@@ -149,7 +149,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
         Cache(userTags =c('static pde map'))
       terra::plot(sim$pdeMap, breaks = 0:10, main = 'present 2020')
       
-      writeRaster(sim$pdeMap, file.path(outputPath(sim), paste0('pde_global', P(sim)$disturbYear,'.tif')),
+      writeRaster(sim$pdeMap, file.path(outputPath(sim), paste0('pdeMap_global', P(sim)$disturbYear,'.tif')),
                   overwrite =TRUE)
       
       # schedule future event(s)
@@ -183,7 +183,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       log_tsf <- log(tsf +1)
       tsh <- postProcess(sim$harv, sim$rasterToMatchLargeCoarse)
       thisYear <- as.integer(time(sim))
-      tsh <- tsh[thisYear - tsh[]]
+      tsh <- thisYear - tsh
       
       tsh[is.na(tsh)] <- P(sim)$ts_else
       log_tsh <- log(tsh + 1)
