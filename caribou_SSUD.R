@@ -92,7 +92,11 @@ defineModule(sim, list(
                  desc = paste("A raster layer with `pixelGroup` IDs per pixel. Pixels are grouped" ,
                               "based on identical `ecoregionGroup`, `speciesCode`, `age` and `B` composition,",
                               "even if the user supplies other initial groupings (e.g., via the `Biomass_borealDataPrep`",
-                              "module."))
+                              "module.")),
+    expectsInput("rasterToMatchLarge", "SpatRaster",
+                 desc = paste("A raster to match of the study area.")),
+    expectsInput("rasterToMatchLargeCoarse", "SpatRaster",
+                 desc = paste("A coarser raster to match of the study area to caluculate proportions of landcover."))
     
   ),
   outputObjects = bindrows(
@@ -196,8 +200,8 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       #updated landcover for simulated PDEs
       sim$simPdeLand[[paste0("Year", time(sim))]] <- c(sim$fixedLand, sim$simLand) 
       
-      layersName <- file.path(outputPath(sim), paste0("pdeLayers_year",
-                                                      time(sim),
+      layersName <- file.path(outputPath(sim), paste0("pdeLayers_", p(sim)$.studyAreaName,
+                                                      "_year", time(sim),
                                                       ".tif"))
       
       writeRaster(sim$simPdeLand[[paste0("Year", time(sim))]],
@@ -224,8 +228,8 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       
       terra::plot(sim$simPdeMap[[paste0("Year", time(sim))]], breaks=0:10, main = paste0("Year", time(sim)))
        
-      layersName <- file.path(outputPath(sim), paste0("pdeMap", "_year",
-                                                      time(sim),
+      layersName <- file.path(outputPath(sim), paste0("pdeMap_", p(sim)$.studyAreaName,
+                                                      "_year", time(sim),
                                                       ".tif"))
       
       writeRaster(sim$simPdeMap[[paste0("Year", time(sim))]],
@@ -365,7 +369,7 @@ plotFun <- function(sim) {
   #   sim$map <- Cache(prepInputs, extractURL('map')) # download, extract, load file from url in sourceURL
   # }
   
-  #cacheTags <- c(currentModule(sim), "function:.inputObjects") ## uncomment this if Cache is being used
+  cacheTags <- c(currentModule(sim), "function:.inputObjects") ## uncomment this if Cache is being used
   dPath <- asPath(getOption("reproducible.destinationPath", dataPath(sim)), 1)
   message(currentModule(sim), ": using dataPath '", dPath, "'.")
   
