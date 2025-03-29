@@ -199,7 +199,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       #updated landcover for simulated PDEs
       sim$simPdeLand[[paste0("Year", time(sim))]] <- c(sim$fixedLand, sim$simLand) 
       
-      layersName <- file.path(outputPath(sim), paste0("pdeLayers_", p(sim)$.studyAreaName,
+      layersName <- file.path(outputPath(sim), paste0("pdeLayers_", P(sim)$.studyAreaName,
                                                       "_year", time(sim),
                                                       ".tif"))
       
@@ -227,7 +227,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       
       terra::plot(sim$simPdeMap[[paste0("Year", time(sim))]], breaks=0:10, main = paste0("Year", time(sim)))
        
-      layersName <- file.path(outputPath(sim), paste0("pdeMap_", p(sim)$.studyAreaName,
+      layersName <- file.path(outputPath(sim), paste0("pdeMap_", P(sim)$.studyAreaName,
                                                       "_year", time(sim),
                                                       ".tif"))
       
