@@ -148,7 +148,8 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
         Cache(userTags =c('static pde map'))
       terra::plot(sim$pdeMap, breaks = 0:10, main = 'present 2020')
       
-      writeRaster(sim$pdeMap, file.path(outputPath(sim), paste0('pdeMap_global', P(sim)$disturbYear,'.tif')),
+      # TODO makes this flexible to different models
+      writeRaster(sim$pdeMap, file.path(outputPath(sim), paste0('pdeMap_',  P(sim)$.studyAreaName,'_global', P(sim)$disturbYear,'.tif')),
                   overwrite =TRUE)
       
       # schedule future event(s)
