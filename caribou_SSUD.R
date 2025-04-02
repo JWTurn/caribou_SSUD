@@ -95,7 +95,7 @@ defineModule(sim, list(
                               "module.")),
     expectsInput("rasterToMatchLarge", "SpatRaster",
                  desc = paste("A raster to match of the study area.")),
-    expectsInput("rasterToMatchLargeCoarse", "SpatRaster",
+    expectsInput("rasterToMatchCoarse", "SpatRaster",
                  desc = paste("A coarser raster to match of the study area to caluculate proportions of landcover."))
     
   ),
@@ -128,11 +128,10 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       
       # do stuff for this event
       # prep land layers for UD calculation/map
-      sim$pdeLand <- postProcess(load_map_layers(propLC = sim$propLand, lfOther = sim$lfUnpaved, 
+      sim$pdeLand <- load_map_layers(propLC = sim$propLand, lfOther = sim$lfUnpaved, 
                                                  lfPaved = sim$lfPaved, disturbOther= sim$disturbOther, 
                                                  fire = sim$historicalFires, harv = sim$harv, 
-                                                 year = P(sim)$disturbYear, ts_else = P(sim)$ts_else),
-                                 sim$rasterToMatchLargeCoarse)|>
+                                                 year = P(sim)$disturbYear, ts_else = P(sim)$ts_else)|>
         Cache(userTags =c('prepped land layers'))
       
       
@@ -149,7 +148,8 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
         Cache(userTags =c('static pde map'))
       terra::plot(sim$pdeMap, breaks = 0:10, main = 'present 2020')
       
-      writeRaster(sim$pdeMap, file.path(outputPath(sim), paste0('pdeMap_global', P(sim)$disturbYear,'.tif')),
+      # TODO makes this flexible to different models
+      writeRaster(sim$pdeMap, file.path(outputPath(sim), paste0('pdeMap_',  P(sim)$.studyAreaName,'_global', P(sim)$disturbYear,'.tif')),
                   overwrite =TRUE)
       
       # schedule future event(s)
@@ -181,8 +181,6 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
                              method = 'average')
       tsf[is.na(tsf)] <- P(sim)$ts_else
       log_tsf <- log(tsf +1)
-      
-      #harv is now reprojected in .inputObjects - once
       tsh <- sim$harv
       thisYear <- as.integer(time(sim))
       tsh <- thisYear - tsh
@@ -202,7 +200,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       #updated landcover for simulated PDEs
       sim$simPdeLand[[paste0("Year", time(sim))]] <- c(sim$fixedLand, sim$simLand) 
       
-      layersName <- file.path(outputPath(sim), paste0("pdeLayers_", p(sim)$.studyAreaName,
+      layersName <- file.path(outputPath(sim), paste0("pdeLayers_", P(sim)$.studyAreaName,
                                                       "_year", time(sim),
                                                       ".tif"))
       
@@ -230,7 +228,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       
       terra::plot(sim$simPdeMap[[paste0("Year", time(sim))]], breaks=0:10, main = paste0("Year", time(sim)))
        
-      layersName <- file.path(outputPath(sim), paste0("pdeMap_", p(sim)$.studyAreaName,
+      layersName <- file.path(outputPath(sim), paste0("pdeMap_", P(sim)$.studyAreaName,
                                                       "_year", time(sim),
                                                       ".tif"))
       
@@ -376,7 +374,7 @@ plotFun <- function(sim) {
   message(currentModule(sim), ": using dataPath '", dPath, "'.")
   
   # ! ----- EDIT BELOW ----- ! #
-  
+  # TODO give a smaller area
   if (!suppliedElsewhere("studyArea_4maps", sim)){
     sim$studyArea_4maps <- Cache(prepInputs,
                                  url = extractURL("studyArea_4maps"),
@@ -386,11 +384,20 @@ plotFun <- function(sim) {
                                  userTags = c("object:studyArea_4maps"))
   }
   
+  if (!suppliedElsewhere("rasterToMatch", sim)){
+    sim$rasterToMatch <- terra::rast(studyArea, res = c(250, 250), vals = 1)
+  }
+  
+  if (!suppliedElsewhere("rasterToMatchCoarse", sim)){
+    sim$rasterToMatch <- terra::rast(studyArea, res = c(500, 500), vals = 1)
+  }
+  
   if (!suppliedElsewhere("propLand", sim)){
     sim$propLand <- Cache(prepInputs,
                           url = extractURL("propLand"),
                           destinationPath = file.path(dataPath(sim), '500grid'),
                           fun = "terra::rast",
+                          projectTo = sim$rasterToMatchCoarse,
                           userTags = c("object:propLand"))
   }
   
@@ -399,6 +406,7 @@ plotFun <- function(sim) {
                          url = extractURL("lfPaved"),
                          destinationPath = dataPath(sim),
                          fun = "terra::rast",
+                         projectTo = sim$rasterToMatchCoarse,
                          userTags = c("object:lfPaved"))
   }
   
@@ -407,6 +415,7 @@ plotFun <- function(sim) {
                            url = extractURL("lfUnpaved"),
                            destinationPath = dataPath(sim),
                            fun = "terra::rast",
+                           projectTo = sim$rasterToMatchCoarse,
                            userTags = c("object:lfUnaved"))
   }
   
@@ -415,6 +424,7 @@ plotFun <- function(sim) {
                               url = extractURL("disturbOther"),
                               destinationPath = dataPath(sim),
                               fun = "terra::rast",
+                              projectTo = sim$rasterToMatchCoarse,
                               userTags = c("object:disturbOther"))
   }
   
@@ -422,23 +432,17 @@ plotFun <- function(sim) {
     sim$historicalFires <- Cache(prepInputs,
                                  url = extractURL("historicalFires"),
                                  destinationPath = dataPath(sim),
-                                 cropTo = sim$rasterToMatch,
-                                 maskTo = sim$studyArea,
                                  fun = "terra::rast",
-                                 overwrite = TRUE,
+                                 projectTo = sim$rasterToMatchCoarse,
                                  userTags = c("object:historicalFires"))
   }
   
   if (!suppliedElsewhere("harv", sim)){
     sim$harv <- Cache(prepInputs,
                       url = extractURL("harv"),
-                      cropTo = sim$rasterToMatch, 
-                      maskTo = sim$studyArea,
-                      projectTo = sim$rasterToMatch,
-                      method = "bilinear",
                       destinationPath = dataPath(sim),
                       fun = "terra::rast",
-                      overwrite = TRUE,
+                      projectTo = sim$rasterToMatchCoarse,
                       userTags = c("object:harv"))
   }
   
