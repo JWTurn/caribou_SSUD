@@ -176,12 +176,14 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
                                          sim$pdeLand$prop_veg, method = 'average')
       prop_mixforest <- terra::resample(classify(reclassForest$`forest type`,  rcl = matrix(c(210, 220, 230, 0, 1, 1), ncol = 2)),
                                         sim$pdeLand$prop_veg, method = 'average')
-     
-      tsf <- terra::resample(sim$timeSinceFire, sim$rasterToMatchLargeCoarse, 
+
+      tsf <- terra::resample(sim$timeSinceFire, sim$rasterToMatch, 
                              method = 'average')
       tsf[is.na(tsf)] <- P(sim)$ts_else
       log_tsf <- log(tsf +1)
-      tsh <- postProcess(sim$harv, sim$rasterToMatchLargeCoarse)
+      
+      #harv is now reprojected in .inputObjects - once
+      tsh <- sim$harv
       thisYear <- as.integer(time(sim))
       tsh <- thisYear - tsh
       
@@ -423,6 +425,7 @@ plotFun <- function(sim) {
                                  cropTo = sim$rasterToMatch,
                                  maskTo = sim$studyArea,
                                  fun = "terra::rast",
+                                 overwrite = TRUE,
                                  userTags = c("object:historicalFires"))
   }
   
@@ -431,8 +434,11 @@ plotFun <- function(sim) {
                       url = extractURL("harv"),
                       cropTo = sim$rasterToMatch, 
                       maskTo = sim$studyArea,
+                      projectTo = sim$rasterToMatch,
+                      method = "bilinear",
                       destinationPath = dataPath(sim),
                       fun = "terra::rast",
+                      overwrite = TRUE,
                       userTags = c("object:harv"))
   }
   
@@ -442,6 +448,7 @@ plotFun <- function(sim) {
                            url = extractURL("issaModel"),
                            destinationPath = dataPath(sim),
                            fun = "readRDS",
+                           overwrite = TRUE,
                            userTags = c("object:modelOutput"))
   }
   
