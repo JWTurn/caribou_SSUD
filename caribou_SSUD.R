@@ -166,8 +166,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     },
     
     simLayers = {
-      
-      
+     
       reclassForest <- reclassifyCohortData(cohortData = sim$cohortData, sppEquivCol = "LandR",
                                             pixelGroupMap = sim$pixelGroupMap, mixedForestCutoffs = c(0.33, 0.66))
       reclassForest$`forest type`[is.na(reclassForest$`forest type`)] <- 0
@@ -387,9 +386,9 @@ plotFun <- function(sim) {
   if (!suppliedElsewhere("rasterToMatch", sim)){
     sim$rasterToMatch <- terra::rast(studyArea, res = c(250, 250), vals = 1)
   }
-  
+
   if (!suppliedElsewhere("rasterToMatchCoarse", sim)){
-    sim$rasterToMatch <- terra::rast(studyArea, res = c(500, 500), vals = 1)
+    sim$rasterToMatchCoarse <- terra::aggregate(sim$rasterToMatch, fact = 2)
   }
   
   if (!suppliedElsewhere("propLand", sim)){
