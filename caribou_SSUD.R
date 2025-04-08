@@ -166,16 +166,18 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     },
     
     simLayers = {
-     
       reclassForest <- reclassifyCohortData(cohortData = sim$cohortData, sppEquivCol = "LandR",
-                                            pixelGroupMap = sim$pixelGroupMap, mixedForestCutoffs = c(0.33, 0.66))
+                                            pixelGroupMap = sim$pixelGroupMap, mixedForestCutoffs = c(0.33, 0.66)) 
+      
       reclassForest$`forest type`[is.na(reclassForest$`forest type`)] <- 0
       
       prop_needleleaf <- terra::resample(classify(reclassForest$`forest type`, rcl = matrix(c(210, 220, 230, 1, 0, 0), ncol = 2)),
-                                         sim$pdeLand$prop_veg, method = 'average')
+                                         sim$pdeLand$prop_veg, method = 'average') |>
+        terra::mask(mask = sim$rasterToMatchCoarse)
       prop_mixforest <- terra::resample(classify(reclassForest$`forest type`,  rcl = matrix(c(210, 220, 230, 0, 1, 1), ncol = 2)),
-                                        sim$pdeLand$prop_veg, method = 'average')
-
+                                        sim$pdeLand$prop_veg, method = 'average') |>
+        terra::mask(mask = sim$rasterToMatchCoarse)
+      
       tsf <- terra::resample(sim$timeSinceFire, sim$rasterToMatchCoarse, 
                              method = 'average')
       tsf[is.na(tsf)] <- P(sim)$ts_else
