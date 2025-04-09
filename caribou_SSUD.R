@@ -166,27 +166,30 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     },
     
     simLayers = {
-      
-      
       reclassForest <- reclassifyCohortData(cohortData = sim$cohortData, sppEquivCol = "LandR",
-                                            pixelGroupMap = sim$pixelGroupMap, mixedForestCutoffs = c(0.33, 0.66))
+                                            pixelGroupMap = sim$pixelGroupMap, mixedForestCutoffs = c(0.33, 0.66)) 
+      
       reclassForest$`forest type`[is.na(reclassForest$`forest type`)] <- 0
       
       prop_needleleaf <- terra::resample(classify(reclassForest$`forest type`, rcl = matrix(c(210, 220, 230, 1, 0, 0), ncol = 2)),
-                                         sim$pdeLand$prop_veg, method = 'average')
+                                         sim$pdeLand$prop_veg, method = 'average') |>
+        terra::mask(mask = sim$rasterToMatchCoarse)
       prop_mixforest <- terra::resample(classify(reclassForest$`forest type`,  rcl = matrix(c(210, 220, 230, 0, 1, 1), ncol = 2)),
-                                        sim$pdeLand$prop_veg, method = 'average')
-     
+                                        sim$pdeLand$prop_veg, method = 'average') |>
+        terra::mask(mask = sim$rasterToMatchCoarse)
+      
       tsf <- terra::resample(sim$timeSinceFire, sim$rasterToMatchCoarse, 
                              method = 'average')
       tsf[is.na(tsf)] <- P(sim)$ts_else
       log_tsf <- log(tsf +1)
+      log_tsf <- mask(log_tsf, sim$rasterToMatchCoarse)
+      
       tsh <- sim$harv
       thisYear <- as.integer(time(sim))
       tsh <- thisYear - tsh
-      
       tsh[is.na(tsh)] <- P(sim)$ts_else
       log_tsh <- log(tsh + 1)
+      log_tsh <- mask(log_tsh, sim$rasterToMatchCoarse)
       
       sim$simLand <- c(prop_needleleaf, prop_mixforest, log_tsf, log_tsh)
       names(sim$simLand) <- c('prop_needleleaf', 'prop_mixforest', 'log_tsf', 'log_tsh')
@@ -387,9 +390,9 @@ plotFun <- function(sim) {
   if (!suppliedElsewhere("rasterToMatch", sim)){
     sim$rasterToMatch <- terra::rast(studyArea, res = c(250, 250), vals = 1)
   }
-  
+
   if (!suppliedElsewhere("rasterToMatchCoarse", sim)){
-    sim$rasterToMatch <- terra::rast(studyArea, res = c(500, 500), vals = 1)
+    sim$rasterToMatchCoarse <- terra::aggregate(sim$rasterToMatch, fact = 2)
   }
   
   if (!suppliedElsewhere("propLand", sim)){
@@ -398,6 +401,7 @@ plotFun <- function(sim) {
                           destinationPath = file.path(dataPath(sim), '500grid'),
                           fun = "terra::rast",
                           projectTo = sim$rasterToMatchCoarse,
+                          maskTo = sim$rasterToMatchCoarse,
                           userTags = c("object:propLand"))
   }
   
@@ -407,6 +411,7 @@ plotFun <- function(sim) {
                          destinationPath = dataPath(sim),
                          fun = "terra::rast",
                          projectTo = sim$rasterToMatchCoarse,
+                         maskTo = sim$rasterToMatchCoarse,
                          userTags = c("object:lfPaved"))
   }
   
@@ -424,6 +429,7 @@ plotFun <- function(sim) {
                               url = extractURL("disturbOther"),
                               destinationPath = dataPath(sim),
                               fun = "terra::rast",
+                              maskTo = sim$rasterToMatchCoarse,
                               projectTo = sim$rasterToMatchCoarse,
                               userTags = c("object:disturbOther"))
   }
@@ -434,6 +440,7 @@ plotFun <- function(sim) {
                                  destinationPath = dataPath(sim),
                                  fun = "terra::rast",
                                  projectTo = sim$rasterToMatchCoarse,
+                                 maskTo = sim$rasterToMatchCoarse,
                                  userTags = c("object:historicalFires"))
   }
   
@@ -442,6 +449,7 @@ plotFun <- function(sim) {
                       url = extractURL("harv"),
                       destinationPath = dataPath(sim),
                       fun = "terra::rast",
+                      maskTo = sim$rasterToMatchCoarse,
                       projectTo = sim$rasterToMatchCoarse,
                       userTags = c("object:harv"))
   }
@@ -452,6 +460,7 @@ plotFun <- function(sim) {
                            url = extractURL("issaModel"),
                            destinationPath = dataPath(sim),
                            fun = "readRDS",
+                           overwrite = TRUE,
                            userTags = c("object:modelOutput"))
   }
   
