@@ -12,45 +12,34 @@ mod2UD <- function(modpath, envlayers, studyArea, pde.saveName = NULL, map.saveN
 }
 
 #' prepares pde and feeds into `make_pde_map()`
-make_pde <- function(mod.tab, land, saveName = NULL){
-  lf.cov<- (2*as.double(mod.tab[term %like% 'distlf_end', 
-                                .(estimate)])*land$log_distlf)
-  lfother.cov<- (2*as.double(mod.tab[term %like% 'distlf_other_end', 
-                                     .(estimate)])*land$log_distlfother)
-  tsf.cov<- (2*as.double(mod.tab[term %like% 'ts_fires_end', 
-                                 .(estimate)])*land$log_tsf)
-  tsh.cov<- (2*as.double(mod.tab[term %like% 'ts_harv_end', 
-                                 .(estimate)])*land$log_tsh)
-  needleleaf.cov <- (2*as.double(mod.tab[term %like% 'needleleaf_end', 
-                                         .(estimate)])*land$prop_needleleaf)
-  veg.cov <- (2*as.double(mod.tab[term %like% 'veg_end', 
-                                  .(estimate)])*land$prop_veg)
-  mixforest.cov <- (2*as.double(mod.tab[term %like% 'mixforest_end',
-                                        .(estimate)])*land$prop_mixforest)
-  wets.cov <- (2*as.double(mod.tab[term %like% 'wets_end', 
-                                   .(estimate)])*land$prop_wets)
-  disturb.cov <- (2*as.double(mod.tab[term %like% 'disturbance_end', 
-                                      .(estimate)])*land$disturb)
-  
-  numerator <- exp(lf.cov + lfother.cov + 
-                     tsf.cov + tsh.cov + 
-                     needleleaf.cov + veg.cov + 
-                     mixforest.cov + 
-                     wets.cov +
-                     disturb.cov)
+make_pde <- function(mod, lsRasters, studyArea, saveName = NULL) {
+  fixEff <- data.table(var = names(fixef(mod)[['cond']]), estimate = fixef(mod)[['cond']])
+  selectionCoefs <- fixEff[var %like% '_end']
+  selectionCoefs[,expr:=gsub('_end|I', '', var)]
+  selectionCoefs[,expr:=gsub(':', '*', expr)]
   
   
-  # the normalizing constant.
-  C <- terra::global(numerator, sum, na.rm = T)
-  pde <- numerator/C[[1]]
+  numerator <- lapply(1:nrow(selectionCoefs), 
+                      FUN = function(x, dat = selectionCoefs, rasterEnviron = lsRasters){
+                        2*as.double(selectionCoefs$estimate[[x]])*eval(parse(text = selectionCoefs$expr[[x]]), envir = rasterEnviron)}
+  )
+  
+  numeratorRast <- mask(rast(numerator), studyArea)
+  names(numeratorRast) <- selectionCoefs$expr
+  numeratorSum <- exp(app(numeratorRast, fun = 'sum', na.rm = T))
+  
+  C <- terra::global(numeratorSum, sum, na.rm = T)
+  pde <- numeratorSum/C[[1]]
   
   if(!is.null(saveName)){
     writeRaster(pde, 
-                file.path(derived, saveName), overwrite = T)
+                file.path(saveName), overwrite = T)
   }
   
   return(pde)
 }
+
+
 
 
 #' crops `make_pde()` to study area and descretizes to 10 bins
