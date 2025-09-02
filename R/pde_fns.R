@@ -3,10 +3,11 @@
 #' @author Julie W. Turner
 
 #' 
-mod2UD <- function(modpath, envlayers, studyArea, pde.saveName = NULL, map.saveName = NULL){
-  mod <- readRDS(modpath)
-  mod.tab <- make_betas_tab(mod)
-  pde <- make_pde(mod.tab, envlayers, studyArea = studyArea, saveName = pde.saveName)
+mod2UD <- function(mod, envlayers, studyArea, pde.saveName = NULL, map.saveName = NULL){
+  if(is.character(mod))
+    {mod <- readRDS(mod)}
+  
+  pde <- make_pde(mod, lsRasters = envlayers, studyArea = studyArea, saveName = pde.saveName)
   map.pde <- as.numeric(make_pde_map(pde, studyArea, saveName = map.saveName))
   return(map.pde)
 }
