@@ -6,7 +6,7 @@
 mod2UD <- function(modpath, envlayers, studyArea, pde.saveName = NULL, map.saveName = NULL){
   mod <- readRDS(modpath)
   mod.tab <- make_betas_tab(mod)
-  pde <- make_pde(mod.tab, envlayers, saveName = pde.saveName)
+  pde <- make_pde(mod.tab, envlayers, studyArea = studyArea, saveName = pde.saveName)
   map.pde <- as.numeric(make_pde_map(pde, studyArea, saveName = map.saveName))
   return(map.pde)
 }
@@ -43,14 +43,14 @@ make_pde <- function(mod, lsRasters, studyArea, saveName = NULL) {
 
 
 #' crops `make_pde()` to study area and descretizes to 10 bins
-make_pde_map <- function(pde, sArea, saveName = NULL){
-  pde.sa <- crop(pde, sArea, mask = T)
+make_pde_map <- function(pde, saveName = NULL){
+ # pde.sa <- crop(pde, sArea, mask = T)
   
   
-  breaks <- terra::global(pde.sa, quantile, na.rm = T, probs = seq(0,1,.1))
+  breaks <- terra::global(pde, quantile, na.rm = T, probs = seq(0,1,.1))
   v.breaks <- unname(breaks)
   t.breaks <- as.vector(t(v.breaks))
-  pde.discrete <- terra::classify(pde.sa, t.breaks, include.lowest=TRUE, brackets=TRUE)
+  pde.discrete <- terra::classify(pde, t.breaks, include.lowest=TRUE, brackets=TRUE)
   
   if(!is.null(saveName)){
     writeRaster(pde.discrete, 
