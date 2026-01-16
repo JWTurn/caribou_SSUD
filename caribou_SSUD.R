@@ -57,7 +57,7 @@ defineModule(sim, list(
   ),
   inputObjects = bindrows(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
-    expectsInput(objectName = "studyArea", objectClass = "SpatVector",
+    expectsInput(objectName = "studyAreaCaribou", objectClass = "SpatVector",
                  desc = "a single polygon derived from the full extent of caribou locations"),
     # expectsInput(objectName = 'propLand', objectClass = 'SpatRaster',
     #              desc = 'Proportion of landcover rasters based on NTEMS LCC. Default if not provided are 2019 at 500m resolution',
@@ -92,8 +92,9 @@ defineModule(sim, list(
                  desc = "spatRaster stack of the yearly landscape layers"),
 
     expectsInput(objectName = "landscape5Yearly", objectClass = "SpatRaster",
-                 desc = "spatRaster stack of the 5 yearly landscape layers"
-    )
+                 desc = "spatRaster stack of the 5 yearly landscape layers"),
+    expectsInput(objectName = "studyArea_juris", objectClass = "list",
+                 desc = "Named list of jurisdiction-specific study areas (SpatVector)")
     # expectsInput("rasterToMatchLarge", "SpatRaster",
     #              desc = paste("A raster to match of the study area.")),
     # expectsInput("rasterToMatchCoarse", "SpatRaster",
@@ -124,48 +125,52 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
   switch(
     eventType,
     init = {
-      browser()
       # Schedule baseline pde
       sim <- scheduleEvent(sim, time(sim),"caribou_SSUD","buildBaselineSSUD")
 
       # schedule future event(s)
       if (P(sim)$simulationProcess == "dynamic") {
-        sim <- scheduleEvent(sim, P(sim)$predictStartYear, "caribou_SSUD", "simLayers", priority = 8)
-        sim <- scheduleEvent(sim, P(sim)$predictStartYear, "caribou_SSUD", "calcSimPde", priority = 9)
+        sim <- scheduleEvent(sim, P(sim)$predictStartYear, "caribou_SSUD", "simLayers")
+        sim <- scheduleEvent(sim, P(sim)$predictStartYear, "caribou_SSUD", "calcSimPde")
       }
       if (P(sim)$predictLastYear) {
-        sim <- scheduleEvent(sim, end(sim), "caribou_SSUD", "simLayers", priority = 8)
+        sim <- scheduleEvent(sim, end(sim), "caribou_SSUD", "simLayers")
       }
 
     },
 
     buildBaselineSSUD = {
-      # baseline PDE map before the simulation starts
+      # build baseline covariate environment once (latest observed)
       envlayers <- composeLandscape(sim$landscapeYearly, sim$landscape5Yearly)
 
+      # baseline PDE maps: jurisdiction models over their jurisdiction study areas,
+      # global model over combined study area
       sim$pdeMap <- lapply(names(sim$iSSAmodels), function(mn) {
+        sa <- getStudyAreaForModel(
+          modelName = mn,
+          studyArea = sim$studyAreaCaribou,
+          studyArea_juris = sim$studyArea_juris
+        )
+
         mod2UD(
-          mod       = sim$iSSAmodels[[mn]],
+          mod = sim$iSSAmodels[[mn]],
           envlayers = envlayers,
-          studyArea = sim$studyArea
+          studyArea = sa
         )
       })
       names(sim$pdeMap) <- names(sim$iSSAmodels)
 
-      # baseline setup for forecast years (store fixed layers)
-      baseEnv <- composeLandscape(sim$landscapeYearly, sim$landscape5Yearly)
-
+      # baseline setup for forecast years (store fixed layers once)
       sim$baselineYear <- max(as.integer(gsub("\\D", "", names(sim$landscapeYearly))), na.rm = TRUE)
 
       sim$fixedSSUD <- list2env(list(
-        prop_veg    = baseEnv$prop_veg,
-        prop_wets   = baseEnv$prop_wets,
-        distpaved   = baseEnv$distpaved,
-        distunpaved = baseEnv$distunpaved,
-        distpolys   = baseEnv$distpolys,
-        timeSinceHarvest0 = baseEnv$timeSinceHarvest
+        prop_veg = envlayers$prop_veg,
+        prop_wets = envlayers$prop_wets,
+        distpaved = envlayers$distpaved,
+        distunpaved = envlayers$distunpaved,
+        distpolys = envlayers$distpolys,
+        timeSinceHarvest0 = envlayers$timeSinceHarvest
       ), parent = baseenv())
-
     },
 
     simLayers = {
@@ -304,16 +309,24 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
         stop("Missing sim$simEnv[['", key, "']]. Did simLayers run first?")
 
       sim$simPdeMap[[key]] <- lapply(names(sim$iSSAmodels), function(mn) {
+
+        sa <- getStudyAreaForModel(
+          modelName = mn,
+          studyArea = sim$studyAreaCaribou,
+          studyArea_juris = sim$studyArea_juris
+        )
+
         mod2UD(
           mod       = sim$iSSAmodels[[mn]],
           envlayers = sim$simEnv[[key]],
-          studyArea = sim$studyArea
+          studyArea = sa
         )
       })
       names(sim$simPdeMap[[key]]) <- names(sim$iSSAmodels)
 
       sim <- scheduleEvent(sim, time(sim) + P(sim)$predictionInterval, "caribou_SSUD", "calcSimPde")
     },
+
     # calcSimPde = {
     #
     #   # calculate the pde UD following Potts and Schlaegel
