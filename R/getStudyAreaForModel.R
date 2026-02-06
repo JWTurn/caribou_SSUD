@@ -1,5 +1,5 @@
+# match the jurisdictional model to the study area for that jurisdiction
 getStudyAreaForModel <- function(modelName, studyArea, studyArea_juris) {
-
   if (tolower(modelName) %in% c("global", "all")) {
     return(studyArea)
   }

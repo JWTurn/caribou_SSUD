@@ -4,13 +4,21 @@
 
 #'
 #'
-mod2UD <- function(mod, envlayers, studyArea, pde.saveName = NULL, map.saveName = NULL){
+mod2UD <- function(mod, envlayers, studyArea, pde.saveName = NULL, map.saveName = NULL, prefix = NULL){
   if(is.character(mod))
     {mod <- readRDS(mod)}
 
   pde <- make_pde(mod, lsRasters = envlayers, studyArea = studyArea, saveName = pde.saveName)
   map.pde <- as.numeric(make_pde_map(pde, saveName = map.saveName))
-  return(map.pde)
+
+  if (!is.null(prefix)) {
+    names(pde) <- paste0("pde_", prefix)
+    names(map.pde) <- paste0("pdeMap_", prefix)
+  } else {
+    names(pde) <- "pde"
+    names(map.pde) <- "pdeMap"
+  }
+  return(list(pde = pde, map = map.pde))
 }
 
 #' prepares pde and feeds into `make_pde_map()`
@@ -26,12 +34,13 @@ make_pde <- function(mod, lsRasters, studyArea, saveName = NULL) {
                         2*as.double(selectionCoefs$estimate[[x]])*eval(parse(text = selectionCoefs$expr[[x]]), envir = rasterEnviron)}
   )
 
-  numeratorRast <- mask(rast(numerator), studyArea)
-  names(numeratorRast) <- selectionCoefs$expr
-  numeratorSum <- exp(app(numeratorRast, fun = 'sum', na.rm = T))
+  numeratorRast <- terra::mask(terra::rast(numerator), studyArea)
+  names(numeratorRast) <- make.unique(selectionCoefs$expr)
+  numeratorSum <- base::exp(terra::app(numeratorRast, fun = base::sum, na.rm = TRUE))
 
-  C <- terra::global(numeratorSum, sum, na.rm = T)
-  sim$pde <- numeratorSum/C[[1]]
+  # normalization constant
+  normConst <- base::sum(terra::values(numeratorSum, mat = FALSE), na.rm = TRUE)
+  pde <- numeratorSum/normConst
 
   if(!is.null(saveName)){
     writeRaster(pde,
@@ -47,7 +56,6 @@ make_pde <- function(mod, lsRasters, studyArea, saveName = NULL) {
 #' crops `make_pde()` to study area and descretizes to 10 bins
 make_pde_map <- function(pde, saveName = NULL){
  # pde.sa <- crop(pde, sArea, mask = T)
-
 
   breaks <- terra::global(pde, quantile, na.rm = T, probs = seq(0,1,.1))
   v.breaks <- unname(breaks)
