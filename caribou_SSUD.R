@@ -166,20 +166,51 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     },
     
     simLayers = {
-      reclassForest <- reclassifyCohortData(cohortData = sim$cohortData, sppEquivCol = "LandR",
-                                            pixelGroupMap = sim$pixelGroupMap, mixedForestCutoffs = c(0.33, 0.66)) 
-      
-      reclassForest$`forest type`[is.na(reclassForest$`forest type`)] <- 0
-      
-      prop_needleleaf <- terra::resample(classify(reclassForest$`forest type`, rcl = matrix(c(210, 220, 230, 1, 0, 0), ncol = 2)),
-                                         sim$pdeLand$prop_veg, method = 'average') |>
-        terra::mask(mask = sim$rasterToMatchCoarse)
-      prop_mixforest <- terra::resample(classify(reclassForest$`forest type`,  rcl = matrix(c(210, 220, 230, 0, 1, 1), ncol = 2)),
-                                        sim$pdeLand$prop_veg, method = 'average') |>
-        terra::mask(mask = sim$rasterToMatchCoarse)
-      
-      tsf <- terra::resample(sim$timeSinceFire, sim$rasterToMatchCoarse, 
-                             method = 'average')
+      thisYear <- as.integer(time(sim))
+      key <- paste0("Year", thisYear)
+      message(paste0("Simulating landscape for ", thisYear))
+      template <- sim$rasterToMatch_extendedLandscapeCoarse
+
+      # ensure baseline fixed layers were created
+      if (is.null(sim$fixedSSUD) || is.null(sim$baselineYear))
+        stop("Missing sim$fixedSSUD / sim$baselineYear. Did buildBaselineSSUD run?")
+
+      # Fixed layers from baseline
+      prop_veg  <- terra::resample(sim$fixedSSUD$prop_veg,  template, method = "average")
+      prop_wets <- terra::resample(sim$fixedSSUD$prop_wets, template, method = "average")
+
+      distpaved   <- terra::resample(sim$fixedSSUD$distpaved,   template, method = "average")
+      distunpaved <- terra::resample(sim$fixedSSUD$distunpaved, template, method = "average")
+      distpolys   <- terra::resample(sim$fixedSSUD$distpolys,   template, method = "average")
+
+      # Dynamic forest layers from LandR
+      reclassForest <- reclassifyCohortData(
+        cohortData = sim$cohortData,
+        sppEquivCol = "LandR",
+        pixelGroupMap = sim$pixelGroupMap,
+        mixedForestCutoffs = c(0.33, 0.66)
+      )
+
+      ft <- reclassForest$`forest type`
+
+      # Needleleaf
+      needle_mask <- terra::classify(
+        ft, rcl = matrix(c(210, 1), ncol = 2, byrow = TRUE), others = 0
+      )
+      prop_needleleaf <- terra::resample(needle_mask, template, method = "average")
+      names(prop_needleleaf) <- "prop_needleleaf"
+
+      # Mixedforest
+      mixed_mask <- terra::classify(
+        ft, rcl = matrix(c(220, 1, 230, 1), ncol = 2, byrow = TRUE),
+        others = 0
+      )
+      prop_mixedforest <- terra::resample(mixed_mask, template, method = "average")
+      names(prop_mixedforest) <- "prop_mixedforest"
+
+      message("Reclassifying forest layers")
+      # Dynamic timeSinceFire from scfmSpread
+      tsf <- terra::resample(sim$timeSinceFire, template, method = "average")
       tsf[is.na(tsf)] <- P(sim)$ts_else
       log_tsf <- log(tsf +1)
       log_tsf <- mask(log_tsf, sim$rasterToMatchCoarse)
@@ -188,33 +219,25 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       thisYear <- as.integer(time(sim))
       tsh <- thisYear - tsh
       tsh[is.na(tsh)] <- P(sim)$ts_else
-      log_tsh <- log(tsh + 1)
-      log_tsh <- mask(log_tsh, sim$rasterToMatchCoarse)
-      
-      sim$simLand <- c(prop_needleleaf, prop_mixforest, log_tsf, log_tsh)
-      names(sim$simLand) <- c('prop_needleleaf', 'prop_mixforest', 'log_tsf', 'log_tsh')
-      
-      sim$fixedLand <- c(sim$pdeLand$prop_veg, sim$pdeLand$prop_wets, sim$pdeLand$log_distlf, 
-                         sim$pdeLand$log_distlfother, sim$pdeLand$disturb)
-      names(sim$fixedLand) <- c('prop_veg', 'prop_wets', 'log_distlf', 
-                                'log_distlfother', 'disturb')
-      
-      
-      #updated landcover for simulated PDEs
-      sim$simPdeLand[[paste0("Year", time(sim))]] <- c(sim$fixedLand, sim$simLand) 
-      
-      layersName <- file.path(outputPath(sim), paste0("pdeLayers_", P(sim)$.studyAreaName,
-                                                      "_year", time(sim),
-                                                      ".tif"))
-      
-      writeRaster(sim$simPdeLand[[paste0("Year", time(sim))]],
-                  filename = layersName,
-                  overwrite = TRUE)
-      
-      message(crayon::green(paste0("Caribou layers successfully saved as: ",
-                                   layersName)))
-      
-      # schedule future event(s)
+      names(tsh) <- "timeSinceHarvest"
+      message("Moving harvest forward")
+      # Bundle into env for make_pde eval()
+      simLand <- c(prop_veg, prop_wets,
+                   prop_needleleaf, prop_mixedforest,
+                   tsf, tsh,
+                   distpaved, distunpaved, distpolys)
+
+      sim$simEnv[[key]] <- list2env(
+        setNames(lapply(names(simLand), \(n) simLand[[n]]), names(simLand)),
+        parent = baseenv()
+      )
+      message("needleleaf mean: ", terra::global(prop_needleleaf, "mean", na.rm=TRUE)[1,1])
+      message("mixed mean: ", terra::global(prop_mixedforest, "mean", na.rm=TRUE)[1,1])
+      message("tsf mean: ", terra::global(tsf, "mean", na.rm=TRUE)[1,1])
+      message("tsh mean: ", terra::global(tsh, "mean", na.rm=TRUE)[1,1])
+      # save layers
+      terra::writeRaster(simLand, file.path(outputPath(sim), paste0("pdeLayers_", key, ".tif")), overwrite = TRUE)
+
       sim <- scheduleEvent(sim, time(sim) + P(sim)$predictionInterval, "caribou_SSUD", "simLayers")
       
       
@@ -222,24 +245,34 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     },
     
     calcSimPde = {
-      
-      # calculate the pde UD following Potts and Schlaegel
-      sim$simPde[[paste0("Year", time(sim))]] <- make_pde(sim$issaBetasTable, sim$simPdeLand[[paste0("Year", time(sim))]]) 
-      
-      # make binned map of pde
-      sim$simPdeMap[[paste0("Year", time(sim))]] <- make_pde_map(sim$simPde[[paste0("Year", time(sim))]], sim$studyArea_4maps)
-      
-      terra::plot(sim$simPdeMap[[paste0("Year", time(sim))]], breaks=0:10, main = paste0("Year", time(sim)))
-       
-      layersName <- file.path(outputPath(sim), paste0("pdeMap_", P(sim)$.studyAreaName,
-                                                      "_year", time(sim),
-                                                      ".tif"))
-      
-      writeRaster(sim$simPdeMap[[paste0("Year", time(sim))]],
-                  filename = layersName,
-                  overwrite = TRUE)
-      
-      # schedule future event(s)
+      thisYear <- as.integer(time(sim))
+      key <- paste0("Year", thisYear)
+      message(paste0("Calculating simulated PDE for: ", thisYear))
+      if (is.null(sim$simEnv[[key]]))
+        stop("Missing sim$simEnv[['", key, "']]. Did simLayers run first?")
+
+      UDlist <- lapply(names(sim$iSSAmodels), function(mn) {
+
+        sa <- getStudyAreaForModel(
+          modelName = mn,
+          studyArea = sim$studyAreaCaribou,
+          studyArea_juris = sim$studyArea_juris
+        )
+
+        mod2UD(
+          mod       = sim$iSSAmodels[[mn]],
+          envlayers = sim$simEnv[[key]],
+          studyArea = sa,
+          prefix    = paste0(mn, "_", thisYear)
+        )
+      })
+      names(UDlist) <- names(sim$iSSAmodels)
+
+      # store pde and pdemap
+      sim$simPde[[key]]    <- lapply(UDlist, `[[`, "pde")
+      sim$simPdeMap[[key]] <- lapply(UDlist, `[[`, "map")
+
+      message(paste0("Finished creating PDE for: ", thisYear))
       sim <- scheduleEvent(sim, time(sim) + P(sim)$predictionInterval, "caribou_SSUD", "calcSimPde")
       
       
