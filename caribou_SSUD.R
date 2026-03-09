@@ -33,6 +33,9 @@ defineModule(sim, list(
     defineParameter("predictLastYear", "logical", TRUE, NA, NA,
                     paste0("If last year of simulation is not multiple of",
                            " predictionInterval, should it predict for the last year too?")),
+    defineParameter("simulationScale", "character", "jurisdictional", NA, NA,
+                    paste0("Should the simulation use jurisdictional or global scale?",
+                           "defaults to jurisdictional")),
     #####
     defineParameter(".plots", "character", "screen", NA, NA,
                     "Used by Plots function, which can be optionally used here"),
@@ -102,17 +105,44 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
   switch(
     eventType,
     init = {
-      # Schedule baseline pde
-      sim <- scheduleEvent(sim, time(sim),"caribou_SSUD","buildBaselineSSUD")
+      # # Schedule baseline pde
+      # sim <- scheduleEvent(sim, time(sim),"caribou_SSUD","buildBaselineSSUD")
+      #
+      # # schedule future event(s)
+      # if (Par$simulationProcess == "dynamic") {
+      #   sim <- scheduleEvent(sim, P(sim)$predictStartYear, "caribou_SSUD", "simLayers")
+      #   sim <- scheduleEvent(sim, P(sim)$predictStartYear, "caribou_SSUD", "calcSimPde")
+      # }
+      # if (Par$simulationScale == "global" &&
+      #     Par$simulationProcess == "dynamic"){
+      #   sim <- scheduleEvent(sim, P(sim)$predictStartYear, "caribou_SSUD", "calcSimPdeGlobal")
+      # }
+      # if (P(sim)$predictLastYear) {
+      #   sim <- scheduleEvent(sim, end(sim), "caribou_SSUD", "simLayers")
+      # }
+      # Baseline always runs
+      sim <- scheduleEvent(sim, time(sim), "caribou_SSUD", "buildBaselineSSUD")
 
-      # schedule future event(s)
-      if (P(sim)$simulationProcess == "dynamic") {
+      if (Par$simulationProcess == "dynamic") {
+
+        # always run simLayers
         sim <- scheduleEvent(sim, P(sim)$predictStartYear, "caribou_SSUD", "simLayers")
-        sim <- scheduleEvent(sim, P(sim)$predictStartYear, "caribou_SSUD", "calcSimPde")
+
+        if (Par$simulationScale %in% c("jurisdictional", "both")) {
+
+          sim <- scheduleEvent(sim, P(sim)$predictStartYear, "caribou_SSUD", "calcSimPde")
+        }
+
+        if (Par$simulationScale %in% c("global", "both")) {
+
+          sim <- scheduleEvent(sim, P(sim)$predictStartYear, "caribou_SSUD", "calcSimPdeGlobal")
+        }
       }
-      if (P(sim)$predictLastYear) {
+
+      if (Par$predictLastYear) {
         sim <- scheduleEvent(sim, end(sim), "caribou_SSUD", "simLayers")
       }
+
 
     },
 
@@ -122,7 +152,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       envlayers <- composeLandscape(sim$landscapeYearly, sim$landscape5Yearly)
 
       # baseline PDE maps: jurisdiction models over their jurisdiction study areas,
-      # global model over combined study area (to be changed)
+      # global model over combined study area
       UDlist <- list()
       UDlist <- lapply(names(sim$iSSAmodels), function(mn) {
         sa <- getStudyAreaForModel(
@@ -264,6 +294,72 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       message(paste0("Finished creating PDE for: ", thisYear))
       sim <- scheduleEvent(sim, time(sim) + P(sim)$predictionInterval, "caribou_SSUD", "calcSimPde")
     },
+    calcSimPdeGlobal = {
+
+      thisYear <- as.integer(time(sim))
+      key <- paste0("Year", thisYear)
+
+      message(paste0("Calculating GLOBAL simulated PDE for: ", thisYear))
+
+      if (is.null(sim$simEnv[[key]]))
+        stop("Missing sim$simEnv[['", key, "']]. Did simLayers run first?")
+
+      if (is.null(sim$studyArea_blobs))
+        stop("Missing sim$studyArea_blobs. Did caribouLocPrep create them?")
+
+      if (!"global" %in% names(sim$iSSAmodels))
+        stop("Global model not found in sim$iSSAmodels")
+
+      env   <- sim$simEnv[[key]]
+      mod   <- sim$iSSAmodels[["global"]]
+      blobs <- sim$studyArea_blobs
+
+      U_list <- vector("list", length(blobs))
+      M_vec  <- numeric(length(blobs))
+
+      # Loop over blobs
+      for (i in seq_along(blobs)) {
+
+        message(paste0("  Processing blob ", i, "/", length(blobs)))
+
+        res <- mod2UD(
+          mod       = mod,
+          envlayers = env,
+          studyArea = blobs[[i]],
+          normalize = FALSE
+        )
+
+        U_i <- res$utility
+
+        M_vec[i] <- terra::global(U_i, sum, na.rm = TRUE)[1,1]
+
+        U_list[[i]] <- U_i
+      }
+
+      # Global normalization
+      M_total <- sum(M_vec)
+
+      PDE_list <- lapply(U_list, function(U_i) U_i / M_total)
+
+      # Mosaic blobs
+      global_pde <- do.call(terra::mosaic, PDE_list)
+
+      # Discretize
+      global_map <- make_pde_map(global_pde)
+
+      sim$simPdeGlobal[[key]]    <- global_pde
+      sim$simPdeMapGlobal[[key]] <- global_map
+
+      message(paste0("Finished GLOBAL PDE for: ", thisYear))
+
+      sim <- scheduleEvent(
+        sim,
+        time(sim) + P(sim)$predictionInterval,
+        "caribou_SSUD",
+        "calcSimPdeGlobal"
+      )
+    },
+
     warning(noEventWarning(sim))
   )
   return(invisible(sim))
