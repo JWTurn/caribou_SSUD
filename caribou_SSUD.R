@@ -128,6 +128,46 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
 
     },
 
+    # buildBaselineSSUD = {
+    #   # build baseline covariate environment once (latest observed)
+    #   message("Building baseline landscape")
+    #   # environment for make_pde() eval()
+    #   envlayers <- list2env(setNames(lapply(names(sim$modelLand), \(n) sim$modelLand[[n]]), names(sim$modelLand)), parent = baseenv())
+    #
+    #   # baseline PDE maps: jurisdiction models over their jurisdiction study areas,
+    #   # global model over combined study area
+    #   UDlist <- list()
+    #   UDlist <- lapply(names(sim$iSSAmodels), function(mn) {
+    #     sa <- getStudyAreaForModel(
+    #       modelName = mn,
+    #       studyArea = sim$studyAreaCaribou,
+    #       studyArea_juris = sim$studyArea_juris
+    #     )
+    #
+    #     mod2UD(
+    #       mod = sim$iSSAmodels[[mn]],
+    #       envlayers = envlayers,
+    #       studyArea = sa
+    #     )
+    #   })
+    #   names(UDlist) <- names(sim$iSSAmodels)
+    #
+    #   sim$pde    <- lapply(UDlist, `[[`, "pde")
+    #   sim$pdeMap <- lapply(UDlist, `[[`, "map")
+    #   message("Baseline pde is comeplete")
+    #   # baseline setup for forecast years (store fixed layers once)
+    #   message("Setting up baseline landscape for forcasting")
+    #   sim$baselineYear <- max(as.integer(gsub("\\D", "", names(sim$landscapeYearly))), na.rm = TRUE)
+    #
+    #   sim$fixedSSUD <- list2env(list(
+    #     prop_veg = envlayers$prop_veg,
+    #     prop_wets = envlayers$prop_wets,
+    #     distpaved = envlayers$distpaved,
+    #     distunpaved = envlayers$distunpaved,
+    #     distpolys = envlayers$distpolys,
+    #     timeSinceHarvest0 = envlayers$timeSinceHarvest
+    #   ), parent = baseenv())
+    # },
     buildBaselineSSUD = {
 <<<<<<< HEAD
 =======
