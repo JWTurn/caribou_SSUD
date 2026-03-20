@@ -1,18 +1,32 @@
 # match the jurisdictional model to the study area for that jurisdiction
-getStudyAreaForModel <- function(modelName, studyArea, studyArea_juris) {
-  if (tolower(modelName) %in% c("global", "all")) {
-    return(studyArea)
+getStudyAreaForModel <- function(modelName, studyArea_juris, jurisdiction) {
+
+  nm <- toupper(names(studyArea_juris))
+  juris_param <- toupper(jurisdiction)
+
+  # global model
+  if (toupper(modelName) == "GLOBAL") {
+
+    if (length(juris_param) != 1) {
+      stop("Global model requires a single jurisdiction when using jurisdiction-only workflow.")
+    }
+
+    if (!juris_param %in% nm) {
+      stop("Jurisdiction '", juris_param, "' not found in studyArea_juris")
+    }
+
+    return(studyArea_juris[[which(nm == juris_param)[1]]])
   }
 
+  # jurisdiction model
   key <- toupper(modelName)
-  nm  <- toupper(names(studyArea_juris))
 
   if (!key %in% nm) {
     stop(
-      "No jurisdiction-specific studyArea for model '", modelName,
+      "No studyArea_juris match for model '", modelName,
       "'. Available: ", paste(names(studyArea_juris), collapse = ", ")
     )
   }
 
-  studyArea_juris[[which(nm == key)[1]]]
+  return(studyArea_juris[[which(nm == key)[1]]])
 }

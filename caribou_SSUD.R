@@ -36,6 +36,10 @@ defineModule(sim, list(
     defineParameter("simulationScale", "character", "jurisdictional", NA, NA,
                     paste0("Should the simulation use jurisdictional or global scale?",
                            "defaults to jurisdictional")),
+    defineParameter("normalizePDE", "logical", TRUE,
+                    desc = "Whether to normalize PDE inside SSUD (FALSE for tmux workflow)"),
+    defineParameter("jurisdiction", "character",c("BC","SK","MB", "ON", "NTYT"),
+                    desc = "A list of jurisdictions to use for PDE creation"),
     #####
     defineParameter(".plots", "character", "screen", NA, NA,
                     "Used by Plots function, which can be optionally used here"),
@@ -71,28 +75,18 @@ defineModule(sim, list(
                               "based on identical `ecoregionGroup`, `speciesCode`, `age` and `B` composition,",
                               "even if the user supplies other initial groupings (e.g., via the `Biomass_borealDataPrep`",
                               "module.")),
-    expectsInput(objectName = "landscapeYearly", objectClass = "SpatRaster",
-                 desc = "spatRaster stack of the yearly landscape layers"),
-
-    expectsInput(objectName = "landscape5Yearly", objectClass = "SpatRaster",
-                 desc = "SpatRaster stacks of the 5 year interval anthropogenic landscape layers"),
+    expectsInput(objectName = "modelLand", objectClass = "list",
+                  desc = "A list of rasters aligned with the model outputs to be used in UD modules"),
     expectsInput(objectName = "studyAreaCaribou", objectClass = "SpatVector",
                  desc = "a single polygon derived from the full extent of caribou locations used for the global model"),
     expectsInput(objectName = "studyArea_juris", objectClass = "list",
                  desc = "Named list of jurisdiction-specific study areas (SpatVector) used for jurisdictional models")
   ),
   outputObjects = bindrows(
-    #createsOutput("objectName", "objectClass", "output object description", ...),
-    # createsOutput(objectName = 'issaBetasTable', objectClass = 'data.table',
-    #               desc = 'data.table of modelled betas'),
-    # createsOutput(objectName = 'pdeLand', objectClass = 'SpatRaster',
-    #              desc = 'Stack of all layers for pde calculation'),
     createsOutput(objectName = 'pde', objectClass = 'SpatRaster',
                   desc = 'Current (pre simulation) Raw pde calculation'),
     createsOutput(objectName = 'pdeMap', objectClass = 'SpatRaster',
                   desc = 'Current (pre simulation) binned map of pde UD for intensity of selection'),
-    # createsOutput(objectName = 'simPdeLand', objectClass = 'SpatRaster',
-    #               desc = 'Stack of all layers for simulated pde calculation'),
     createsOutput(objectName = 'simPde', objectClass = 'SpatRaster',
                   desc = 'Raw pde calculation from sim layers'),
     createsOutput(objectName = 'simPdeMap', objectClass = 'list',
@@ -146,36 +140,97 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
 
     },
 
+    # buildBaselineSSUD = {
+    #   # build baseline covariate environment once (latest observed)
+    #   message("Building baseline landscape")
+    #   # environment for make_pde() eval()
+    #   envlayers <- list2env(setNames(lapply(names(sim$modelLand), \(n) sim$modelLand[[n]]), names(sim$modelLand)), parent = baseenv())
+    #
+    #   # baseline PDE maps: jurisdiction models over their jurisdiction study areas,
+    #   # global model over combined study area
+    #   UDlist <- list()
+    #   UDlist <- lapply(names(sim$iSSAmodels), function(mn) {
+    #     sa <- getStudyAreaForModel(
+    #       modelName = mn,
+    #       studyArea = sim$studyAreaCaribou,
+    #       studyArea_juris = sim$studyArea_juris
+    #     )
+    #
+    #     mod2UD(
+    #       mod = sim$iSSAmodels[[mn]],
+    #       envlayers = envlayers,
+    #       studyArea = sa
+    #     )
+    #   })
+    #   names(UDlist) <- names(sim$iSSAmodels)
+    #
+    #   sim$pde    <- lapply(UDlist, `[[`, "pde")
+    #   sim$pdeMap <- lapply(UDlist, `[[`, "map")
+    #   message("Baseline pde is comeplete")
+    #   # baseline setup for forecast years (store fixed layers once)
+    #   message("Setting up baseline landscape for forcasting")
+    #   sim$baselineYear <- max(as.integer(gsub("\\D", "", names(sim$landscapeYearly))), na.rm = TRUE)
+    #
+    #   sim$fixedSSUD <- list2env(list(
+    #     prop_veg = envlayers$prop_veg,
+    #     prop_wets = envlayers$prop_wets,
+    #     distpaved = envlayers$distpaved,
+    #     distunpaved = envlayers$distunpaved,
+    #     distpolys = envlayers$distpolys,
+    #     timeSinceHarvest0 = envlayers$timeSinceHarvest
+    #   ), parent = baseenv())
+    # },
     buildBaselineSSUD = {
-      # build baseline covariate environment once (latest observed)
-      message("Building baseline landscape")
-      # environment for make_pde() eval()
-      envlayers <- list2env(setNames(lapply(names(sim$modelLand), \(n) sim$modelLand[[n]]), names(sim$modelLand)), parent = baseenv())
 
-      # baseline PDE maps: jurisdiction models over their jurisdiction study areas,
-      # global model over combined study area
-      UDlist <- list()
+      message("Building baseline landscape")
+
+      # envlayers for PDE
+      envlayers <- list2env(setNames(lapply(names(sim$modelLand), function(n) sim$modelLand[[n]]),names(sim$modelLand)),parent = baseenv())
+
+      # PDEs
       UDlist <- lapply(names(sim$iSSAmodels), function(mn) {
+
         sa <- getStudyAreaForModel(
           modelName = mn,
           studyArea = sim$studyAreaCaribou,
-          studyArea_juris = sim$studyArea_juris
+          studyArea_juris = sim$studyArea_juris,
+          jurisdiction = Par$jurisdiction
         )
 
         mod2UD(
           mod = sim$iSSAmodels[[mn]],
           envlayers = envlayers,
-          studyArea = sa
+          studyArea = sa,
+          normalize = Par$normalizePDE
         )
       })
+
       names(UDlist) <- names(sim$iSSAmodels)
 
-      sim$pde    <- lapply(UDlist, `[[`, "pde")
-      sim$pdeMap <- lapply(UDlist, `[[`, "map")
-      message("Baseline pde is comeplete")
-      # baseline setup for forecast years (store fixed layers once)
-      message("Setting up baseline landscape for forcasting")
-      sim$baselineYear <- max(as.integer(gsub("\\D", "", names(sim$landscapeYearly))), na.rm = TRUE)
+      # store outputs
+      if (Par$normalizePDE) {
+        sim$pde    <- lapply(UDlist, `[[`, "pde")
+
+        if (Par$simulationScale != "global") {
+          sim$pdeMap <- lapply(UDlist, `[[`, "map")
+        } else {
+          sim$pdeMap <- NULL
+        }
+
+      } else {
+        sim$pde <- lapply(UDlist, function(x) x$utility)
+        sim$pdeMap <- NULL
+      }
+
+      message("Baseline PDE complete")
+
+      # forecast setup
+      message("Setting up baseline landscape for forecasting")
+
+      sim$baselineYear <- max(
+        as.integer(gsub("\\D", "", names(sim$landscapeYearly))),
+        na.rm = TRUE
+      )
 
       sim$fixedSSUD <- list2env(list(
         prop_veg = envlayers$prop_veg,
@@ -185,6 +240,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
         distpolys = envlayers$distpolys,
         timeSinceHarvest0 = envlayers$timeSinceHarvest
       ), parent = baseenv())
+
     },
 
     simLayers = {
@@ -260,7 +316,8 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       message("tsf mean: ", terra::global(tsf, "mean", na.rm=TRUE)[1,1])
       message("tsh mean: ", terra::global(tsh, "mean", na.rm=TRUE)[1,1])
       # save layers
-      terra::writeRaster(simLand, file.path(outputPath(sim), paste0("pdeLayers_", key, ".tif")), overwrite = TRUE)
+      jur <- paste(Par$jurisdiction, collapse = "")
+      terra::writeRaster(simLand, file.path(outputPath(sim), paste0("pdeLayers_", key, jur, ".tif")), overwrite = TRUE)
 
       sim <- scheduleEvent(sim, time(sim) + P(sim)$predictionInterval, "caribou_SSUD", "simLayers")
     },
