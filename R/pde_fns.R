@@ -2,85 +2,68 @@
 #' @export
 #' @author Julie W. Turner
 
-#'
-#' mod2UD <- function(mod, envlayers, studyArea, pde.saveName = NULL, map.saveName = NULL){
-#'   if(is.character(mod))
-#'     {mod <- readRDS(mod)}
-#'
-#'   pde <- make_pde(mod, lsRasters = envlayers, studyArea = studyArea, saveName = pde.saveName)
-#'   map.pde <- as.numeric(make_pde_map(pde, saveName = map.saveName))
-#'   return(map.pde)
-#' }
-#'
-#' #' prepares pde and feeds into `make_pde_map()`
-#' make_pde <- function(mod, lsRasters, studyArea, saveName = NULL) {
-#'   fixEff <- data.table(var = names(fixef(mod)[['cond']]), estimate = fixef(mod)[['cond']])
-#'   selectionCoefs <- fixEff[var %like% '_end']
-#'   selectionCoefs[,expr:=gsub('_end|I', '', var)]
-#'   selectionCoefs[,expr:=gsub(':', '*', expr)]
-#'
-#'
-#'   numerator <- lapply(1:nrow(selectionCoefs),
-#'                       FUN = function(x, dat = selectionCoefs, rasterEnviron = lsRasters){
-#'                         2*as.double(selectionCoefs$estimate[[x]])*eval(parse(text = selectionCoefs$expr[[x]]), envir = rasterEnviron)}
-#'   )
-#'
-#'   numeratorRast <- mask(rast(numerator), studyArea)
-#'   names(numeratorRast) <- selectionCoefs$expr
-#'   numeratorSum <- exp(app(numeratorRast, fun = 'sum', na.rm = T))
-#'
-#'   C <- terra::global(numeratorSum, sum, na.rm = T)
-#'   pde <- numeratorSum/C[[1]]
-#'
-#'   if(!is.null(saveName)){
-#'     writeRaster(pde,
-#'                 file.path(saveName), overwrite = T)
-#'   }
-#'
-#'   return(pde)
-#' }
 
-mod2UD <- function(mod,
-                   envlayers,
-                   studyArea,
-                   pde.saveName = NULL,
-                   map.saveName = NULL,
-                   normalize = TRUE) {
+# mod2UD <- function(mod, envlayers, studyArea, pde.saveName = NULL, map.saveName = NULL){
+#   if(is.character(mod))
+#     {mod <- readRDS(mod)}
+#
+#   pde <- make_pde(mod, lsRasters = envlayers, studyArea = studyArea, saveName = pde.saveName)
+#   map.pde <- as.numeric(make_pde_map(pde, saveName = map.saveName))
+#   return(map.pde)
+# }
+mod2UD <- function(mod, envlayers, studyArea, prefix = NULL, normalize = TRUE) {
 
   if (is.character(mod)) {
     mod <- readRDS(mod)
   }
 
-  pde_or_U <- make_pde(
+  U <- make_pde(
     mod = mod,
     lsRasters = envlayers,
     studyArea = studyArea,
-    saveName = pde.saveName,
     normalize = normalize
   )
 
   if (normalize) {
 
-    map.pde <- as.numeric(
-      make_pde_map(pde_or_U, saveName = map.saveName)
-    )
+    map.pde <- make_pde_map(U)
 
-    return(list(
-      pde = pde_or_U,
-      map = map.pde
-    ))
+    return(list(pde = U,map = map.pde))
 
   } else {
 
-    return(list(
-      utility = pde_or_U
-    ))
+    return(list(utility = U))
   }
 }
 
-make_pde <- function(mod, lsRasters, studyArea,
-                     saveName = NULL,
-                     normalize = TRUE) {
+#' prepares pde and feeds into `make_pde_map()`
+# make_pde <- function(mod, lsRasters, studyArea, saveName = NULL) {
+#   fixEff <- data.table(var = names(fixef(mod)[['cond']]), estimate = fixef(mod)[['cond']])
+#   selectionCoefs <- fixEff[var %like% '_end']
+#   selectionCoefs[,expr:=gsub('_end|I', '', var)]
+#   selectionCoefs[,expr:=gsub(':', '*', expr)]
+#
+#
+#   numerator <- lapply(1:nrow(selectionCoefs),
+#                       FUN = function(x, dat = selectionCoefs, rasterEnviron = lsRasters){
+#                         2*as.double(selectionCoefs$estimate[[x]])*eval(parse(text = selectionCoefs$expr[[x]]), envir = rasterEnviron)}
+#   )
+#
+#   numeratorRast <- mask(rast(numerator), studyArea)
+#   names(numeratorRast) <- selectionCoefs$expr
+#   numeratorSum <- exp(app(numeratorRast, fun = 'sum', na.rm = T))
+#
+#   C <- terra::global(numeratorSum, sum, na.rm = T)
+#   pde <- numeratorSum/C[[1]]
+#
+#   if(!is.null(saveName)){
+#     writeRaster(pde,
+#                 file.path(saveName), overwrite = T)
+#   }
+#
+#   return(pde)
+# }
+make_pde <- function(mod, lsRasters, studyArea, normalize = TRUE) {
 
   fixEff <- data.table(
     var = names(fixef(mod)[['cond']]),
@@ -110,19 +93,14 @@ make_pde <- function(mod, lsRasters, studyArea,
     C <- terra::global(U, sum, na.rm = TRUE)[[1]]
     pde <- U / C
 
-    if (!is.null(saveName)) {
-      writeRaster(pde, file.path(saveName), overwrite = TRUE)
-    }
-
     return(pde)
 
   } else {
 
-    # Return unnormalized utility surface
     return(U)
+
   }
 }
-
 
 #' crops `make_pde()` to study area and descretizes to 10 bins
 make_pde_map <- function(pde, saveName = NULL){

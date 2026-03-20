@@ -149,7 +149,8 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     buildBaselineSSUD = {
       # build baseline covariate environment once (latest observed)
       message("Building baseline landscape")
-      envlayers <- composeLandscape(sim$landscapeYearly, sim$landscape5Yearly)
+      # environment for make_pde() eval()
+      envlayers <- list2env(setNames(lapply(names(sim$modelLand), \(n) sim$modelLand[[n]]), names(sim$modelLand)), parent = baseenv())
 
       # baseline PDE maps: jurisdiction models over their jurisdiction study areas,
       # global model over combined study area
@@ -248,6 +249,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
                    prop_needleleaf, prop_mixedforest,
                    tsf, tsh,
                    distpaved, distunpaved, distpolys)
+      # simLand needs to be exported to workflowOutputs for normalization model
 
       sim$simEnv[[key]] <- list2env(
         setNames(lapply(names(simLand), \(n) simLand[[n]]), names(simLand)),
@@ -291,73 +293,25 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       sim$simPde[[key]]    <- lapply(UDlist, `[[`, "pde")
       sim$simPdeMap[[key]] <- lapply(UDlist, `[[`, "map")
 
-      message(paste0("Finished creating PDE for: ", thisYear))
-      sim <- scheduleEvent(sim, time(sim) + P(sim)$predictionInterval, "caribou_SSUD", "calcSimPde")
-    },
-    calcSimPdeGlobal = {
+      outDir <- file.path(outputPath(sim), "simPDE")
+      #change to create path in reproducible
+      dir.create(outDir, showWarnings = FALSE)
 
-      thisYear <- as.integer(time(sim))
-      key <- paste0("Year", thisYear)
+      for (mn in names(UDlist)) {
 
-      message(paste0("Calculating GLOBAL simulated PDE for: ", thisYear))
+        pde <- UDlist[[mn]]$pde
 
-      if (is.null(sim$simEnv[[key]]))
-        stop("Missing sim$simEnv[['", key, "']]. Did simLayers run first?")
-
-      if (is.null(sim$studyArea_blobs))
-        stop("Missing sim$studyArea_blobs. Did caribouLocPrep create them?")
-
-      if (!"global" %in% names(sim$iSSAmodels))
-        stop("Global model not found in sim$iSSAmodels")
-
-      env   <- sim$simEnv[[key]]
-      mod   <- sim$iSSAmodels[["global"]]
-      blobs <- sim$studyArea_blobs
-
-      U_list <- vector("list", length(blobs))
-      M_vec  <- numeric(length(blobs))
-
-      # Loop over blobs
-      for (i in seq_along(blobs)) {
-
-        message(paste0("  Processing blob ", i, "/", length(blobs)))
-
-        res <- mod2UD(
-          mod       = mod,
-          envlayers = env,
-          studyArea = blobs[[i]],
-          normalize = FALSE
+        outfile <- file.path(
+          outDir,
+          paste0(mn, "_", key, ".tif")
         )
 
-        U_i <- res$utility
+        terra::writeRaster(pde, outfile, overwrite = TRUE)
 
-        M_vec[i] <- terra::global(U_i, sum, na.rm = TRUE)[1,1]
-
-        U_list[[i]] <- U_i
       }
 
-      # Global normalization
-      M_total <- sum(M_vec)
-
-      PDE_list <- lapply(U_list, function(U_i) U_i / M_total)
-
-      # Mosaic blobs
-      global_pde <- do.call(terra::mosaic, PDE_list)
-
-      # Discretize
-      global_map <- make_pde_map(global_pde)
-
-      sim$simPdeGlobal[[key]]    <- global_pde
-      sim$simPdeMapGlobal[[key]] <- global_map
-
-      message(paste0("Finished GLOBAL PDE for: ", thisYear))
-
-      sim <- scheduleEvent(
-        sim,
-        time(sim) + P(sim)$predictionInterval,
-        "caribou_SSUD",
-        "calcSimPdeGlobal"
-      )
+      message(paste0("Finished creating PDE for: ", thisYear))
+      sim <- scheduleEvent(sim, time(sim) + P(sim)$predictionInterval, "caribou_SSUD", "calcSimPde")
     },
 
     warning(noEventWarning(sim))
@@ -372,26 +326,41 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
   dPath <- asPath(getOption("reproducible.destinationPath", dataPath(sim)), 1)
   message(currentModule(sim), ": using dataPath '", dPath, "'.")
 
-  # ! ----- EDIT BELOW ----- ! #
-  # TODO give a smaller area
-  # if (!suppliedElsewhere("studyArea", sim)){
-  #   sim$studyArea <- Cache(prepInputs,
-  #                                url = extractURL("studyArea_4maps"),
-  #                                destinationPath = dataPath(sim),
-  #                                targetFile = "studyArea_4maps.shp",
-  #                                alsoExtract = "similar", fun = "terra::vect",
-  #                                userTags = c("object:studyArea_4maps"))
-  # }
+  # load modelLand
+  if (!suppliedElsewhere("modelLand", sim)) {
 
-  # if (!suppliedElsewhere("rasterToMatch", sim)){
-  #   sim$rasterToMatch <- terra::rast(studyArea, res = c(250, 250), vals = 1)
-  # }
-  #
-  # if (!suppliedElsewhere("rasterToMatchCoarse", sim)){
-  #   sim$rasterToMatchCoarse <- terra::aggregate(sim$rasterToMatch, fact = 2)
-  # }
+    message("Loading modelLand from cloud")
 
-  # ! ----- STOP EDITING ----- ! #
+    modelLandFile <- reproducible::prepInputs(
+      targetFile = "modelLand.tif",
+      destinationPath = dPath,
+      fun = terra::rast,
+      cloudFolderID = getOption("reproducible.cloudFolderID")
+    )
+
+    sim$modelLand <- as.list(modelLandFile)
+  }
+
+  # load iSSA models
+  if (!suppliedElsewhere("iSSAmodels", sim)) {
+
+    message("Loading iSSA models from cloud")
+
+    modelFile <- reproducible::prepInputs(
+      targetFile = "iSSAmodels.RData",
+      destinationPath = dPath,
+      cloudFolderID = getOption("reproducible.cloudFolderID")
+    )
+
+    load(modelFile)
+
+    if (!exists("iSSAmodels")) {
+      stop("iSSAmodels not found in loaded file")
+    }
+
+    sim$iSSAmodels <- iSSAmodels
+  }
+
   return(invisible(sim))
 }
 
