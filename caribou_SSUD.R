@@ -38,7 +38,7 @@ defineModule(sim, list(
                            "defaults to jurisdictional")),
     defineParameter("normalizePDE", "logical", TRUE,
                     desc = "Whether to normalize PDE inside SSUD (FALSE for tmux workflow)"),
-    defineParameter("jurisdiction", "character",c("BC","SK","MB", "ON", "NTYT"),
+    defineParameter("jurisdiction", "character",c("BC","SK","MB", "ON", "NTYT", "NT"),
                     desc = "A list of jurisdictions to use for PDE creation"),
     #####
     defineParameter(".plots", "character", "screen", NA, NA,
@@ -99,21 +99,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
   switch(
     eventType,
     init = {
-      # # Schedule baseline pde
-      # sim <- scheduleEvent(sim, time(sim),"caribou_SSUD","buildBaselineSSUD")
-      #
-      # # schedule future event(s)
-      # if (Par$simulationProcess == "dynamic") {
-      #   sim <- scheduleEvent(sim, P(sim)$predictStartYear, "caribou_SSUD", "simLayers")
-      #   sim <- scheduleEvent(sim, P(sim)$predictStartYear, "caribou_SSUD", "calcSimPde")
-      # }
-      # if (Par$simulationScale == "global" &&
-      #     Par$simulationProcess == "dynamic"){
-      #   sim <- scheduleEvent(sim, P(sim)$predictStartYear, "caribou_SSUD", "calcSimPdeGlobal")
-      # }
-      # if (P(sim)$predictLastYear) {
-      #   sim <- scheduleEvent(sim, end(sim), "caribou_SSUD", "simLayers")
-      # }
+
       # Baseline always runs
       sim <- scheduleEvent(sim, time(sim), "caribou_SSUD", "buildBaselineSSUD")
 
@@ -140,46 +126,6 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
 
     },
 
-    # buildBaselineSSUD = {
-    #   # build baseline covariate environment once (latest observed)
-    #   message("Building baseline landscape")
-    #   # environment for make_pde() eval()
-    #   envlayers <- list2env(setNames(lapply(names(sim$modelLand), \(n) sim$modelLand[[n]]), names(sim$modelLand)), parent = baseenv())
-    #
-    #   # baseline PDE maps: jurisdiction models over their jurisdiction study areas,
-    #   # global model over combined study area
-    #   UDlist <- list()
-    #   UDlist <- lapply(names(sim$iSSAmodels), function(mn) {
-    #     sa <- getStudyAreaForModel(
-    #       modelName = mn,
-    #       studyArea = sim$studyAreaCaribou,
-    #       studyArea_juris = sim$studyArea_juris
-    #     )
-    #
-    #     mod2UD(
-    #       mod = sim$iSSAmodels[[mn]],
-    #       envlayers = envlayers,
-    #       studyArea = sa
-    #     )
-    #   })
-    #   names(UDlist) <- names(sim$iSSAmodels)
-    #
-    #   sim$pde    <- lapply(UDlist, `[[`, "pde")
-    #   sim$pdeMap <- lapply(UDlist, `[[`, "map")
-    #   message("Baseline pde is comeplete")
-    #   # baseline setup for forecast years (store fixed layers once)
-    #   message("Setting up baseline landscape for forcasting")
-    #   sim$baselineYear <- max(as.integer(gsub("\\D", "", names(sim$landscapeYearly))), na.rm = TRUE)
-    #
-    #   sim$fixedSSUD <- list2env(list(
-    #     prop_veg = envlayers$prop_veg,
-    #     prop_wets = envlayers$prop_wets,
-    #     distpaved = envlayers$distpaved,
-    #     distunpaved = envlayers$distunpaved,
-    #     distpolys = envlayers$distpolys,
-    #     timeSinceHarvest0 = envlayers$timeSinceHarvest
-    #   ), parent = baseenv())
-    # },
     buildBaselineSSUD = {
 
       message("Building baseline landscape")
@@ -245,7 +191,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
 
     simLayers = {
       thisYear <- as.integer(time(sim))
-      key <- paste0("Year", thisYear)
+      key <- paste0("year", thisYear)
       message(paste0("Simulating landscape for ", thisYear))
       template <- sim$rasterToMatch_extendedLandscapeCoarse
 
@@ -324,7 +270,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
 
     calcSimPde = {
       thisYear <- as.integer(time(sim))
-      key <- paste0("Year", thisYear)
+      key <- paste0("year", thisYear)
       message(paste0("Calculating simulated PDE for: ", thisYear))
       if (is.null(sim$simEnv[[key]]))
         stop("Missing sim$simEnv[['", key, "']]. Did simLayers run first?")
@@ -333,7 +279,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
 
         sa <- getStudyAreaForModel(
           modelName = mn,
-          studyArea = sim$studyAreaCaribou,
+          studyArea = sim$studyArea_juris,
           studyArea_juris = sim$studyArea_juris
         )
 
@@ -341,13 +287,18 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
           mod       = sim$iSSAmodels[[mn]],
           envlayers = sim$simEnv[[key]],
           studyArea = sa,
-          prefix    = paste0(mn, "_", thisYear)
+          prefix    = paste0(mn, "_", thisYear),
+          normalize = Par$normalizePDE
         )
       })
       names(UDlist) <- names(sim$iSSAmodels)
 
       # store pde and pdemap
-      sim$simPde[[key]]    <- lapply(UDlist, `[[`, "pde")
+      if (Par$normalizePDE) {
+        sim$simPde[[key]] <- lapply(UDlist, `[[`, "pde")
+      } else {
+        sim$simPde[[key]] <- lapply(UDlist, `[[`, "utility")
+      }
       sim$simPdeMap[[key]] <- lapply(UDlist, `[[`, "map")
 
       outDir <- file.path(outputPath(sim), "simPDE")
@@ -356,7 +307,11 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
 
       for (mn in names(UDlist)) {
 
-        pde <- UDlist[[mn]]$pde
+        pde <- if (Par$normalizePDE) {
+          UDlist[[mn]]$pde
+        } else {
+          UDlist[[mn]]$utility
+        }
 
         outfile <- file.path(
           outDir,
