@@ -138,7 +138,6 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
 
         sa <- getStudyAreaForModel(
           modelName = mn,
-          studyArea = sim$studyAreaCaribou,
           studyArea_juris = sim$studyArea_juris,
           jurisdiction = Par$jurisdiction
         )
@@ -279,8 +278,8 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
 
         sa <- getStudyAreaForModel(
           modelName = mn,
-          studyArea = sim$studyArea_juris,
-          studyArea_juris = sim$studyArea_juris
+          studyArea_juris = sim$studyArea_juris,
+          jurisdiction = Par$jurisdiction
         )
 
         mod2UD(
@@ -312,10 +311,10 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
         } else {
           UDlist[[mn]]$utility
         }
-
+        jur <- paste(Par$jurisdiction, collapse = "")
         outfile <- file.path(
           outDir,
-          paste0(mn, "_", key, ".tif")
+          paste0(mn, "_", jur ,"_", key, "pde.tif")
         )
 
         terra::writeRaster(pde, outfile, overwrite = TRUE)
