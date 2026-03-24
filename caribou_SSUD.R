@@ -316,9 +316,8 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       }
       sim$simPdeMap[[key]] <- lapply(UDlist, `[[`, "map")
 
-      outDir <- file.path(outputPath(sim), "simPDE")
-      #change to create path in reproducible
-      dir.create(outDir, showWarnings = FALSE)
+      outDir <- checkPath(file.path(outputPath(sim), "simPDE"), create = T)
+
 
       for (mn in names(UDlist)) {
 
