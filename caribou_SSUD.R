@@ -80,7 +80,9 @@ defineModule(sim, list(
     expectsInput(objectName = "studyAreaCaribou", objectClass = "SpatVector",
                  desc = "a single polygon derived from the full extent of caribou locations used for the global model"),
     expectsInput(objectName = "studyArea_juris", objectClass = "list",
-                 desc = "Named list of jurisdiction-specific study areas (SpatVector) used for jurisdictional models")
+                 desc = "Named list of jurisdiction-specific study areas (SpatVector) used for jurisdictional models"),
+    expectsInput(objectName = "rasterToMatch_SSUD", objectClass = "spatRaster",
+                 desc = "Raster to match for SSUD")
   ),
   outputObjects = bindrows(
     createsOutput(objectName = 'pde', objectClass = 'SpatRaster',
@@ -189,10 +191,14 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     },
 
     simLayers = {
+
       thisYear <- as.integer(time(sim))
       key <- paste0("year", thisYear)
       message(paste0("Simulating landscape for ", thisYear))
-      template <- sim$rasterToMatch_extendedLandscapeCoarse
+
+      template <- sim$rasterToMatch_SSUD # TODO this is a quick fix, need to do an if exists inputObject
+
+
 
       # ensure baseline fixed layers were created
       if (is.null(sim$fixedSSUD) || is.null(sim$baselineYear))
