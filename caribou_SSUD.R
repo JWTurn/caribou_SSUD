@@ -129,7 +129,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     },
 
     buildBaselineSSUD = {
-browser()
+
       # build baseline covariate environment once (latest observed)
       # message("Building baseline landscape")
       # # environment for make_pde() eval()
