@@ -129,13 +129,12 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     },
 
     buildBaselineSSUD = {
-<<<<<<< HEAD
-=======
+
       # build baseline covariate environment once (latest observed)
       message("Building baseline landscape")
       # environment for make_pde() eval()
       envlayers <- list2env(setNames(lapply(names(sim$modelLand), \(n) sim$modelLand[[n]]), names(sim$modelLand)), parent = baseenv())
->>>>>>> 8c1f996 (Update module to work with tmux experiment approach)
+
 
       message("Building baseline landscape")
 
@@ -319,7 +318,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
 
       for (mn in names(UDlist)) {
 
-<<<<<<< HEAD
+
         pde <- if (Par$normalizePDE) {
           UDlist[[mn]]$pde
         } else {
@@ -328,14 +327,14 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
         jur <- paste(Par$jurisdiction, collapse = "")
         outfile <- file.path(
           outDir,
-          paste0(mn, "_", jur ,"_", key, "pde.tif")
-=======
+          paste0(mn, "_", jur ,"_", key, "pde.tif"))
+
         pde <- UDlist[[mn]]$pde
 
         outfile <- file.path(
           outDir,
           paste0(mn, "_", key, ".tif")
->>>>>>> 8c1f996 (Update module to work with tmux experiment approach)
+
         )
 
         terra::writeRaster(pde, outfile, overwrite = TRUE)
