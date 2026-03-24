@@ -129,11 +129,11 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     },
 
     buildBaselineSSUD = {
-
+browser()
       # build baseline covariate environment once (latest observed)
-      message("Building baseline landscape")
-      # environment for make_pde() eval()
-      envlayers <- list2env(setNames(lapply(names(sim$modelLand), \(n) sim$modelLand[[n]]), names(sim$modelLand)), parent = baseenv())
+      # message("Building baseline landscape")
+      # # environment for make_pde() eval()
+      # envlayers <- list2env(setNames(lapply(names(sim$modelLand), \(n) sim$modelLand[[n]]), names(sim$modelLand)), parent = baseenv())
 
 
       message("Building baseline landscape")
@@ -142,6 +142,10 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       envlayers <- list2env(setNames(lapply(names(sim$modelLand), function(n) sim$modelLand[[n]]),names(sim$modelLand)),parent = baseenv())
 
       # PDEs
+      # TODO clean up testing
+      # if(is.null(names(sim$iSSAmodels))){
+      #   names(sim$iSSAmodels) <- Par$jurisdiction # TODO this is a fill in for when need a name for something brought in separately without a name, need a better test
+      # }
       UDlist <- lapply(names(sim$iSSAmodels), function(mn) {
 
         sa <- getStudyAreaForModel(
