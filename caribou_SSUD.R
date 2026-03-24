@@ -183,11 +183,19 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
 
       # forecast setup
       message("Setting up baseline landscape for forecasting")
+# TODO we need to do this better for when no landscapeYearly
 
-      sim$baselineYear <- max(
-        as.integer(gsub("\\D", "", names(sim$landscapeYearly))),
-        na.rm = TRUE
-      )
+      if(!is.null(sim$landscapeYearly)){
+        sim$baselineYear <- max(
+          as.integer(gsub("\\D", "", names(sim$landscapeYearly))),
+          na.rm = TRUE
+        )
+      } else {
+        # TODO this isn't actually accurate because max is 2022, need to deal with this
+        # TODO without landscapeYearly, we can't fill tsf and tsh with the real years of data...
+        sim$baselineYear <- Par$predictStartYear - Par$predictionInterval
+      }
+
 
       sim$fixedSSUD <- list2env(list(
         prop_veg = envlayers$prop_veg,
@@ -336,11 +344,17 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
 
         outfile <- file.path(
           outDir,
-          paste0(mn, "_", key, ".tif")
+          paste0(mn, "_pde_", key, ".tif")
 
         )
 
         terra::writeRaster(pde, outfile, overwrite = TRUE)
+
+        outfileMap <- file.path(
+          outDir,
+          paste0(mn, "_pdeMap_", key, ".tif"))
+        terra::writeRaster(UDlist[[mn]]$map, outfileMap, overwrite = TRUE)
+
 
       }
 
