@@ -130,22 +130,12 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
 
     buildBaselineSSUD = {
 
-      # build baseline covariate environment once (latest observed)
-      # message("Building baseline landscape")
-      # # environment for make_pde() eval()
-      # envlayers <- list2env(setNames(lapply(names(sim$modelLand), \(n) sim$modelLand[[n]]), names(sim$modelLand)), parent = baseenv())
-
-
       message("Building baseline landscape")
 
       # envlayers for PDE
       envlayers <- list2env(setNames(lapply(names(sim$modelLand), function(n) sim$modelLand[[n]]),names(sim$modelLand)),parent = baseenv())
 
       # PDEs
-      # TODO clean up testing
-      # if(is.null(names(sim$iSSAmodels))){
-      #   names(sim$iSSAmodels) <- Par$jurisdiction # TODO this is a fill in for when need a name for something brought in separately without a name, need a better test
-      # }
       UDlist <- lapply(names(sim$iSSAmodels), function(mn) {
 
         sa <- getStudyAreaForModel(
@@ -183,19 +173,11 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
 
       # forecast setup
       message("Setting up baseline landscape for forecasting")
-# TODO we need to do this better for when no landscapeYearly
 
-      if(!is.null(sim$landscapeYearly)){
-        sim$baselineYear <- max(
-          as.integer(gsub("\\D", "", names(sim$landscapeYearly))),
-          na.rm = TRUE
-        )
-      } else {
-        # TODO this isn't actually accurate because max is 2022, need to deal with this
-        # TODO without landscapeYearly, we can't fill tsf and tsh with the real years of data...
-        sim$baselineYear <- Par$predictStartYear - Par$predictionInterval
-      }
-
+      sim$baselineYear <- max(
+        as.integer(gsub("\\D", "", names(sim$landscapeYearly))),
+        na.rm = TRUE
+      )
 
       sim$fixedSSUD <- list2env(list(
         prop_veg = envlayers$prop_veg,
@@ -326,9 +308,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
 
       outDir <- checkPath(file.path(outputPath(sim), "simPDE"), create = T)
 
-
       for (mn in names(UDlist)) {
-
 
         pde <- if (Par$normalizePDE) {
           UDlist[[mn]]$pde
@@ -338,23 +318,10 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
         jur <- paste(Par$jurisdiction, collapse = "")
         outfile <- file.path(
           outDir,
-          paste0(mn, "_", jur ,"_", key, "pde.tif"))
-
-        pde <- UDlist[[mn]]$pde
-
-        outfile <- file.path(
-          outDir,
-          paste0(mn, "_pde_", key, ".tif")
-
+          paste0(mn, "_", jur ,"_", key, "pde.tif")
         )
 
         terra::writeRaster(pde, outfile, overwrite = TRUE)
-
-        outfileMap <- file.path(
-          outDir,
-          paste0(mn, "_pdeMap_", key, ".tif"))
-        terra::writeRaster(UDlist[[mn]]$map, outfileMap, overwrite = TRUE)
-
 
       }
 
