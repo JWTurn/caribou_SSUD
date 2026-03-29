@@ -188,6 +188,13 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
         timeSinceHarvest0 = envlayers$timeSinceHarvest
       ), parent = baseenv())
 
+      # To be passed to fire forecasts for historic fire if dynamic
+      if(Par$simulationProcess == 'dynamic') {
+        sim$timeSinceFire <- envlayers$timeSinceFire
+        # TODO for when Harvest module integrated...
+        #sim$timeSinceHarvest <- envlayers$timeSinceHarvest
+      }
+
     },
 
     simLayers = {
