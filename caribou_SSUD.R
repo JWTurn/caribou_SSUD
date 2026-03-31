@@ -59,8 +59,9 @@ defineModule(sim, list(
     defineParameter(".seed", "list", list(), NA, NA,
                     "Named list of seeds to use for each event (names)."),
     defineParameter(".useCache", "logical", FALSE, NA, NA,
-                    "Should caching of events or module be used?")
-
+                    "Should caching of events or module be used?"),
+    defineParameter("outputFolderID", "character", "https://drive.google.com/drive/folders/1CRSY_tJucL3E8VDgUYEv9WXuG1nKImH3", NA, NA,
+                    "Google Drive folder ID for workflow outputs")
   ),
   inputObjects = bindrows(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
@@ -174,10 +175,9 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       # forecast setup
       message("Setting up baseline landscape for forecasting")
 
-      sim$baselineYear <- max(
-        as.integer(gsub("\\D", "", names(sim$landscapeYearly))),
-        na.rm = TRUE
-      )
+      if (is.null(sim$baselineYear)){
+        sim$baselineYear <- max(Par$histLandYears)
+      }
 
       sim$fixedSSUD <- list2env(list(
         prop_veg = envlayers$prop_veg,
@@ -353,11 +353,11 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
 
     message("Loading modelLand from cloud")
 
-    modelLandFile <- reproducible::prepInputs(
+    modelLandFile <- prepInputs(
       targetFile = "modelLand.tif",
       destinationPath = dPath,
       fun = terra::rast,
-      cloudFolderID = getOption("reproducible.cloudFolderID")
+      url = Par$outputFolderID
     )
 
     sim$modelLand <- as.list(modelLandFile)
@@ -368,10 +368,11 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
 
     message("Loading iSSA models from cloud")
 
-    modelFile <- reproducible::prepInputs(
+    modelFile <- prepInputs(
       targetFile = "iSSAmodels.RData",
       destinationPath = dPath,
-      cloudFolderID = getOption("reproducible.cloudFolderID")
+      url = Par$outputFolderID,
+      fun = load(targetFile)
     )
 
     load(modelFile)
@@ -381,6 +382,18 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     }
 
     sim$iSSAmodels <- iSSAmodels
+  }
+
+  # load jurisdictional study areas
+  if (!suppliedElsewhere("studyArea_juris", sim)) {
+    studyareaJuris<- prepInputs(
+      targetFile = paste0("studyArea_juris_", Par$.studyAreaName, ".rds"),
+      destinationPath = dPath,
+      url = Par$outputFolderID,
+      fun = terra::vect(x = targetFile)
+    )
+    sim$studyArea_juris <- studyArea_juris
+
   }
 
   return(invisible(sim))
