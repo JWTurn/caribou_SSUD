@@ -40,6 +40,8 @@ defineModule(sim, list(
                     desc = "Whether to normalize PDE inside SSUD (FALSE for tmux workflow)"),
     defineParameter("jurisdiction", "character",c("BC","SK","MB", "ON", "NTYT", "NT"),
                     desc = "A list of jurisdictions to use for PDE creation"),
+    defineParameter("ecotype", "character",c("boreal", 'northern_mountain'),
+                    desc = "Which ecotype of caribou were modelled"),
     #####
     defineParameter(".plots", "character", "screen", NA, NA,
                     "Used by Plots function, which can be optionally used here"),
@@ -137,38 +139,29 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       envlayers <- list2env(setNames(lapply(names(sim$modelLand), function(n) sim$modelLand[[n]]),names(sim$modelLand)),parent = baseenv())
 
       # PDEs
-      UDlist <- lapply(names(sim$iSSAmodels), function(mn) {
+      if(Par$ecotype == 'boreal'){
+        makeBorealPDE(mods = sim$iSSAmodels, studyAreaJuris = sim$studyArea_juris,  juris = Par$jurisdiction,
+                      envLayers = envlayers, normalizePDE = Par$normalizePDE, simulationScale = Par$simulationScale)
+      }
 
-        sa <- getStudyAreaForModel(
-          modelName = mn,
-          studyArea_juris = sim$studyArea_juris,
-          jurisdiction = Par$jurisdiction
-        )
-
-        mod2UD(
-          mod = sim$iSSAmodels[[mn]],
+      if(Par$ecotype == 'northern_mountain'){
+        ud <- mod2UD(
+          mod = sim$iSSAmodels,
           envlayers = envlayers,
-          studyArea = sa,
+          studyArea = sim$studyArea,
           normalize = Par$normalizePDE
         )
-      })
 
-      names(UDlist) <- names(sim$iSSAmodels)
+        if (normalizePDE) {
+          sim$pde <- ud$pde
+          sim$pdeMap <- as.numeric(ud$map)
 
-      # store outputs
-      if (Par$normalizePDE) {
-        sim$pde    <- lapply(UDlist, `[[`, "pde")
-
-        if (Par$simulationScale != "global") {
-          sim$pdeMap <- lapply(UDlist, `[[`, "map")
         } else {
+          sim$pde <- ud$utility
           sim$pdeMap <- NULL
         }
-
-      } else {
-        sim$pde <- lapply(UDlist, function(x) x$utility)
-        sim$pdeMap <- NULL
       }
+
 
       message("Baseline PDE complete")
 
@@ -178,7 +171,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       if (is.null(sim$baselineYear)){
         sim$baselineYear <- max(Par$histLandYears)
       }
-
+#browser()
       sim$fixedSSUD <- list2env(list(
         prop_veg = envlayers$prop_veg,
         prop_wets = envlayers$prop_wets,
