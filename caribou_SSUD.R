@@ -82,8 +82,6 @@ defineModule(sim, list(
                   desc = "A list of rasters aligned with the model outputs to be used in UD modules"),
     expectsInput(objectName = "studyAreaCaribou", objectClass = "SpatVector",
                  desc = "a single polygon derived from the full extent of caribou locations used for the global model"),
-    expectsInput(objectName = "studyArea_juris", objectClass = "list",
-                 desc = "Named list of jurisdiction-specific study areas (SpatVector) used for jurisdictional models"),
     expectsInput(objectName = "rasterToMatch_SSUD", objectClass = "spatRaster",
                  desc = "Raster to match for SSUD")
   ),
@@ -148,7 +146,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
         ud <- mod2UD(
           mod = sim$iSSAmodels,
           envlayers = envlayers,
-          studyArea = sim$studyArea,
+          studyArea = sim$studyAreaCaribou,
           normalize = Par$normalizePDE
         )
 
@@ -171,7 +169,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       if (is.null(sim$baselineYear)){
         sim$baselineYear <- max(Par$histLandYears)
       }
-#browser()
+browser()
       sim$fixedSSUD <- list2env(list(
         prop_veg = envlayers$prop_veg,
         prop_wets = envlayers$prop_wets,
