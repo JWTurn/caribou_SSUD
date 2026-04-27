@@ -110,16 +110,8 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
 
         # always run simLayers
         sim <- scheduleEvent(sim, P(sim)$predictStartYear, "caribou_SSUD", "simLayers")
+        sim <- scheduleEvent(sim, P(sim)$predictStartYear, "caribou_SSUD", "calcSimPde")
 
-        if (Par$simulationScale %in% c("jurisdictional", "both")) {
-
-          sim <- scheduleEvent(sim, P(sim)$predictStartYear, "caribou_SSUD", "calcSimPde")
-        }
-
-        if (Par$simulationScale %in% c("global", "both")) {
-
-          sim <- scheduleEvent(sim, P(sim)$predictStartYear, "caribou_SSUD", "calcSimPdeGlobal")
-        }
       }
 
       if (Par$predictLastYear) {
@@ -150,7 +142,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
           normalize = Par$normalizePDE
         )
 
-        if (normalizePDE) {
+        if (Par$normalizePDE) {
           sim$pde <- ud$pde
           sim$pdeMap <- as.numeric(ud$map)
 
@@ -169,19 +161,54 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       if (is.null(sim$baselineYear)){
         sim$baselineYear <- max(Par$histLandYears)
       }
-browser()
-      sim$fixedSSUD <- list2env(list(
-        prop_veg = envlayers$prop_veg,
-        prop_wets = envlayers$prop_wets,
-        distpaved = envlayers$distpaved,
-        distunpaved = envlayers$distunpaved,
-        distpolys = envlayers$distpolys,
-        timeSinceHarvest0 = envlayers$timeSinceHarvest
-      ), parent = baseenv())
+
+  # sim$fixedSSUD <- list2env(list(
+  #   prop_veg = envlayers$prop_veg,
+  #   prop_wets = envlayers$prop_wets,
+  #   distpaved = envlayers$distpaved,
+  #   distunpaved = envlayers$distunpaved,
+  #   distpolys = envlayers$distpolys,
+  #   timeSinceHarvest0 = envlayers$timeSinceHarvest
+  # ), parent = baseenv())
 
       # To be passed to fire forecasts for historic fire if dynamic
       if(Par$simulationProcess == 'dynamic') {
-        sim$timeSinceFire <- envlayers$timeSinceFire
+
+        if(Par$ecotype == 'boreal'){
+          sim$fixedSSUD <- list2env(list(
+            prop_veg = envlayers$prop_veg,
+            prop_wets = envlayers$prop_wets,
+            distpaved = envlayers$distpaved,
+            distunpaved = envlayers$distunpaved,
+            distpolys = envlayers$distpolys,
+            timeSinceHarvest0 = envlayers$timeSinceHarvest
+          ), parent = baseenv())
+
+          sim$timeSinceFire <- envlayers$timeSinceFire
+        }
+
+        if(Par$ecotype == 'northern_mountain'){
+          # sim$fixedSSUD <- list2env(list(
+          #   prop_veg_250 = envlayers$prop_veg_250,
+          #   dist_lf_250 = envlayers$dist_lf_250,
+          #   #distunpaved = envlayers$distunpaved,
+          #   dist_poly_250 = envlayers$dist_poly_250,
+          #   timeSinceHarvest0 = envlayers$timeSinceHarvest
+          # ), parent = baseenv())
+
+          sim$fixedSSUD <- rast(
+            list(
+              prop_veg_250 = sim$modelLand$prop_veg_250,
+            dist_lf_250 = sim$modelLand$dist_lf_250,
+            #distunpaved = envlayers$distunpaved,
+            dist_poly_250 = sim$modelLand$dist_poly_250
+            )
+          )
+
+          sim$timeSinceFire <- sim$modelLand$ts_fires_250
+        }
+
+
         # TODO for when Harvest module integrated...
         #sim$timeSinceHarvest <- envlayers$timeSinceHarvest
       }
@@ -203,12 +230,14 @@ browser()
         stop("Missing sim$fixedSSUD / sim$baselineYear. Did buildBaselineSSUD run?")
 
       # Fixed layers from baseline
-      prop_veg  <- terra::resample(sim$fixedSSUD$prop_veg,  template, method = "average")
-      prop_wets <- terra::resample(sim$fixedSSUD$prop_wets, template, method = "average")
 
-      distpaved   <- terra::resample(sim$fixedSSUD$distpaved,   template, method = "average")
-      distunpaved <- terra::resample(sim$fixedSSUD$distunpaved, template, method = "average")
-      distpolys   <- terra::resample(sim$fixedSSUD$distpolys,   template, method = "average")
+      fixedResamp <- terra::resample(sim$fixedSSUD,  template, method = "average")
+      # prop_veg  <- terra::resample(sim$fixedSSUD$prop_veg,  template, method = "average")
+      # prop_wets <- terra::resample(sim$fixedSSUD$prop_wets, template, method = "average")
+      #
+      # distpaved   <- terra::resample(sim$fixedSSUD$distpaved,   template, method = "average")
+      # distunpaved <- terra::resample(sim$fixedSSUD$distunpaved, template, method = "average")
+      # distpolys   <- terra::resample(sim$fixedSSUD$distpolys,   template, method = "average")
 
       # Dynamic forest layers from LandR
       reclassForest <- reclassifyCohortData(
@@ -220,53 +249,98 @@ browser()
 
       ft <- reclassForest$`forest type`
 
-      # Needleleaf
-      needle_mask <- terra::classify(
-        ft, rcl = matrix(c(210, 1), ncol = 2, byrow = TRUE), others = 0
-      )
-      prop_needleleaf <- terra::resample(needle_mask, template, method = "average")
-      names(prop_needleleaf) <- "prop_needleleaf"
+      if(Par$ecotype == 'boreal'){
+        # Needleleaf
+        needle_mask <- terra::classify(
+          ft, rcl = matrix(c(210, 1), ncol = 2, byrow = TRUE), others = 0
+        )
+        prop_needleleaf <- terra::resample(needle_mask, template, method = "average")
+        names(prop_needleleaf) <- "prop_needleleaf"
 
-      # Mixedforest
-      mixed_mask <- terra::classify(
-        ft, rcl = matrix(c(220, 1, 230, 1), ncol = 2, byrow = TRUE),
-        others = 0
-      )
-      prop_mixedforest <- terra::resample(mixed_mask, template, method = "average")
-      names(prop_mixedforest) <- "prop_mixedforest"
+        # Mixedforest
+        mixed_mask <- terra::classify(
+          ft, rcl = matrix(c(220, 1, 230, 1), ncol = 2, byrow = TRUE),
+          others = 0
+        )
+        prop_mixedforest <- terra::resample(mixed_mask, template, method = "average")
+        names(prop_mixedforest) <- "prop_mixedforest"
+
+        forests <- c(prop_needleleaf, prop_mixedforest)
+      }
+
+      if(Par$ecotype == 'northern_mountain'){
+        # all forest
+        forest_mask <- terra::classify(
+          ft, rcl = matrix(c(210, 1, 220, 1, 230, 1), ncol = 2, byrow = TRUE), others = 0
+        )
+        prop_forest_250 <- terra::resample(forest_mask, template, method = "average")
+        names(prop_forest_250) <- "prop_forest_250"
+
+        forests <- c(prop_forest_250)
+
+      }
+
+
 
       message("Reclassifying forest layers")
       # Dynamic timeSinceFire from scfmSpread
       tsf <- terra::resample(sim$timeSinceFire, template, method = "average")
       tsf[is.na(tsf)] <- P(sim)$ts_else
-      names(tsf) <- "timeSinceFire"
+
       message("Update timeSinceFire using scfm")
 
       # age forward timeSinceHarvest
       dt <- thisYear - sim$baselineYear
-      tsh <- terra::resample(sim$fixedSSUD$timeSinceHarvest0, template, method = "average")
-      tsh <- tsh + dt
-      tsh[is.na(tsh)] <- P(sim)$ts_else
-      names(tsh) <- "timeSinceHarvest"
-      message("Moving harvest forward")
+
+      if(Par$ecotype == 'boreal'){
+        names(tsf) <- "timeSinceFire"
+
+        tsh <- terra::resample(sim$fixedSSUD$timeSinceHarvest0, template, method = "average")
+        tsh <- tsh + dt
+        tsh[is.na(tsh)] <- P(sim)$ts_else
+        names(tsh) <- "timeSinceHarvest"
+        message("Moving harvest forward")
+
+        tsRasts <- c(tsf, tsh)
+      }
+
+      if(Par$ecotype == 'northern_mountain'){
+        names(tsf) <- "ts_fires_250"
+
+        tsRasts <- tsf
+        #TODO update poly disturbances for harvest eventually
+        # tsh <- terra::resample(sim$fixedSSUD$timeSinceHarvest0, template, method = "average")
+        # tsh <- tsh + dt
+        # tsh[is.na(tsh)] <- P(sim)$ts_else
+        # names(tsh) <- "timeSinceHarvest"
+        # message("Moving harvest forward")
+      }
+
+
       # Bundle into env for make_pde eval()
-      simLand <- c(prop_veg, prop_wets,
-                   prop_needleleaf, prop_mixedforest,
-                   tsf, tsh,
-                   distpaved, distunpaved, distpolys)
+      simLand <- c(fixedResamp, forests, tsRasts)
       # simLand needs to be exported to workflowOutputs for normalization model
 
       sim$simEnv[[key]] <- list2env(
         setNames(lapply(names(simLand), \(n) simLand[[n]]), names(simLand)),
         parent = baseenv()
       )
-      message("needleleaf mean: ", terra::global(prop_needleleaf, "mean", na.rm=TRUE)[1,1])
-      message("mixed mean: ", terra::global(prop_mixedforest, "mean", na.rm=TRUE)[1,1])
+      #message("needleleaf mean: ", terra::global(prop_needleleaf, "mean", na.rm=TRUE)[1,1])
+      #message("mixed mean: ", terra::global(prop_mixedforest, "mean", na.rm=TRUE)[1,1])
       message("tsf mean: ", terra::global(tsf, "mean", na.rm=TRUE)[1,1])
-      message("tsh mean: ", terra::global(tsh, "mean", na.rm=TRUE)[1,1])
+      #message("tsh mean: ", terra::global(tsh, "mean", na.rm=TRUE)[1,1])
+
+
       # save layers
-      jur <- paste(Par$jurisdiction, collapse = "")
-      terra::writeRaster(simLand, file.path(outputPath(sim), paste0("pdeLayers_", key, jur, ".tif")), overwrite = TRUE)
+      if(Par$ecotype == 'boreal'){
+        jur <- paste(Par$jurisdiction, collapse = "")
+        terra::writeRaster(simLand, file.path(outputPath(sim), paste0("pdeLayers_", jur, key, ".tif")), overwrite = TRUE)
+      }
+
+      if(Par$ecotype == 'northern_mountain'){
+
+        terra::writeRaster(simLand, file.path(outputPath(sim), paste0("pdeLayers_", Par$.studyAreaName, "_", key, ".tif")), overwrite = TRUE)
+      }
 
       sim <- scheduleEvent(sim, time(sim) + P(sim)$predictionInterval, "caribou_SSUD", "simLayers")
     },
@@ -278,52 +352,41 @@ browser()
       if (is.null(sim$simEnv[[key]]))
         stop("Missing sim$simEnv[['", key, "']]. Did simLayers run first?")
 
-      UDlist <- lapply(names(sim$iSSAmodels), function(mn) {
-
-        sa <- getStudyAreaForModel(
-          modelName = mn,
-          studyArea_juris = sim$studyArea_juris,
-          jurisdiction = Par$jurisdiction
-        )
-
-        mod2UD(
-          mod       = sim$iSSAmodels[[mn]],
-          envlayers = sim$simEnv[[key]],
-          studyArea = sa,
-          prefix    = paste0(mn, "_", thisYear),
-          normalize = Par$normalizePDE
-        )
-      })
-      names(UDlist) <- names(sim$iSSAmodels)
-
-      # store pde and pdemap
-      if (Par$normalizePDE) {
-        sim$simPde[[key]] <- lapply(UDlist, `[[`, "pde")
-      } else {
-        sim$simPde[[key]] <- lapply(UDlist, `[[`, "utility")
-      }
-      sim$simPdeMap[[key]] <- lapply(UDlist, `[[`, "map")
 
       outDir <- checkPath(file.path(outputPath(sim), "simPDE"), create = T)
 
-      for (mn in names(UDlist)) {
+      # boreal
+      if(Par$ecotype == 'boreal'){
+        makeBorealPDE(mods = sim$iSSAmodels, studyAreaJuris = sim$studyArea_juris,  juris = Par$jurisdiction,
+                      envLayers = sim$simEnv[[key]], normalizePDE = Par$normalizePDE, simulationScale = Par$simulationScale,
+                      isSim = TRUE, key = key, savePath = outDir)
+      }
 
-        pde <- if (Par$normalizePDE) {
-          UDlist[[mn]]$pde
-        } else {
-          UDlist[[mn]]$utility
-        }
-        jur <- paste(Par$jurisdiction, collapse = "")
-        outfile <- file.path(
-          outDir,
-          paste0(mn, "_", jur ,"_", key, "pde.tif")
+      # northern mountain
+      if(Par$ecotype == 'northern_mountain'){
+        ud <- mod2UD(
+          mod = sim$iSSAmodels,
+          envlayers = sim$simEnv[[key]],
+          studyArea = sim$studyAreaCaribou,
+          normalize = Par$normalizePDE
         )
 
-        terra::writeRaster(pde, outfile, overwrite = TRUE)
+        if (Par$normalizePDE) {
+          sim$simPde[[key]] <- ud$pde
+          sim$simPdeMap[[key]] <- as.numeric(ud$map)
+
+        } else {
+          sim$simPde[[key]]<- ud$utility
+          sim$simPdeMap[[key]] <- NULL
+        }
+        terra::writeRaster(sim$simPde[[key]], file.path(outDir, paste0("pde_", Par$.studyAreaName, '_', key)), overwrite = TRUE)
+        terra::writeRaster(sim$simPdeMap[[key]], file.path(outDir, paste0("pdeMap_", Par$.studyAreaName, '_', key)), overwrite = TRUE)
 
       }
 
+
       message(paste0("Finished creating PDE for: ", thisYear))
+      message(paste0("Outputs saved to: ", outDir))
       sim <- scheduleEvent(sim, time(sim) + P(sim)$predictionInterval, "caribou_SSUD", "calcSimPde")
     },
 
