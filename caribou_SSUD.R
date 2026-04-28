@@ -86,6 +86,8 @@ defineModule(sim, list(
                  desc = "Raster to match for SSUD")
   ),
   outputObjects = bindrows(
+    createsOutput("timeSinceFire", "SpatRaster",
+                  "If dynamic, map of time since last burn used in model - with pixels that never burn receiving NA"),
     createsOutput(objectName = 'pde', objectClass = 'SpatRaster',
                   desc = 'Current (pre simulation) Raw pde calculation'),
     createsOutput(objectName = 'pdeMap', objectClass = 'SpatRaster',
@@ -103,10 +105,21 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     eventType,
     init = {
 
+
       # Baseline always runs
       sim <- scheduleEvent(sim, time(sim), "caribou_SSUD", "buildBaselineSSUD")
 
       if (Par$simulationProcess == "dynamic") {
+        if(Par$ecotype == 'boreal'){
+          sim$timeSinceFire <- postProcess(sim$modelLand$timeSinceFire,
+                                           to = sim$rasterToMatch)
+        }
+
+        if(Par$ecotype == 'northern_mountain'){
+          sim$timeSinceFire <- postProcess(subst(results$modelLand$ts_fires_250, from = ts_else, to = NA),
+                                           to = sim$rasterToMatch)
+        }
+
 
         # always run simLayers
         sim <- scheduleEvent(sim, P(sim)$predictStartYear, "caribou_SSUD", "simLayers")
@@ -152,6 +165,13 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
         }
       }
 
+      outDir <- reproducible::checkPath(file.path(outputPath(sim), paste0('pde_', Par$.studyAreaName)), create = T)
+      terra::writeRaster(sim$pde, file.path(outDir, paste0('pde_', Par$.studyAreaName, '.tif')))
+
+      if(!is.null(sim$pdeMap)){
+        terra::writeRaster(sim$pdeMap, file.path(outDir, paste0('pdeMap_', Par$.studyAreaName, '.tif')))
+      }
+
 
       message("Baseline PDE complete")
 
@@ -184,7 +204,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
             timeSinceHarvest0 = envlayers$timeSinceHarvest
           ), parent = baseenv())
 
-          sim$timeSinceFire <- envlayers$timeSinceFire
+
         }
 
         if(Par$ecotype == 'northern_mountain'){
@@ -205,7 +225,6 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
             )
           )
 
-          sim$timeSinceFire <- sim$modelLand$ts_fires_250
         }
 
 
@@ -284,7 +303,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
 
       message("Reclassifying forest layers")
       # Dynamic timeSinceFire from scfmSpread
-      tsf <- terra::resample(sim$timeSinceFire, template, method = "average")
+      tsf <- reproducible::postProcess(sim$timeSinceFire, to = template)
       tsf[is.na(tsf)] <- P(sim)$ts_else
 
       message("Update timeSinceFire using scfm")
@@ -332,14 +351,16 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
 
 
       # save layers
+      outDir <- reproducible::checkPath(file.path(outputPath(sim), paste0('pde_', Par$.studyAreaName), 'sims'), create = T)
+
       if(Par$ecotype == 'boreal'){
         jur <- paste(Par$jurisdiction, collapse = "")
-        terra::writeRaster(simLand, file.path(outputPath(sim), paste0("pdeLayers_", jur, key, ".tif")), overwrite = TRUE)
+        terra::writeRaster(simLand, file.path(outDir, paste0("pdeLayers_", jur, key, ".tif")), overwrite = TRUE)
       }
 
       if(Par$ecotype == 'northern_mountain'){
 
-        terra::writeRaster(simLand, file.path(outputPath(sim), paste0("pdeLayers_", Par$.studyAreaName, "_", key, ".tif")), overwrite = TRUE)
+        terra::writeRaster(simLand, file.path(outDir, paste0("pdeLayers_", Par$.studyAreaName, "_", key, ".tif")), overwrite = TRUE)
       }
 
       sim <- scheduleEvent(sim, time(sim) + P(sim)$predictionInterval, "caribou_SSUD", "simLayers")
@@ -353,7 +374,8 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
         stop("Missing sim$simEnv[['", key, "']]. Did simLayers run first?")
 
 
-      outDir <- checkPath(file.path(outputPath(sim), "simPDE"), create = T)
+      outDir <- reproducible::checkPath(file.path(outputPath(sim), paste0('pde_', Par$.studyAreaName), 'sims'), create = T)
+
 
       # boreal
       if(Par$ecotype == 'boreal'){
@@ -379,8 +401,9 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
           sim$simPde[[key]]<- ud$utility
           sim$simPdeMap[[key]] <- NULL
         }
-        terra::writeRaster(sim$simPde[[key]], file.path(outDir, paste0("pde_", Par$.studyAreaName, '_', key)), overwrite = TRUE)
-        terra::writeRaster(sim$simPdeMap[[key]], file.path(outDir, paste0("pdeMap_", Par$.studyAreaName, '_', key)), overwrite = TRUE)
+
+        terra::writeRaster(sim$simPde[[key]], file.path(outDir, paste0("pde_", Par$.studyAreaName, '_', key, '.tif')), overwrite = TRUE)
+        terra::writeRaster(sim$simPdeMap[[key]], file.path(outDir, paste0("pdeMap_", Par$.studyAreaName, '_', key, '.tif')), overwrite = TRUE)
 
       }
 
