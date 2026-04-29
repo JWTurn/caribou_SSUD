@@ -116,7 +116,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
         }
 
         if(Par$ecotype == 'northern_mountain'){
-          sim$timeSinceFire <- postProcess(subst(results$modelLand$ts_fires_250, from = ts_else, to = NA),
+          sim$timeSinceFire <- postProcess(sim$modelLand$timSinceFire,
                                            to = sim$rasterToMatch)
         }
 
