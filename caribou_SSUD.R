@@ -116,7 +116,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
         }
 
         if(Par$ecotype == 'northern_mountain'){
-          sim$timeSinceFire <- postProcess(sim$modelLand$timSinceFire,
+          sim$timeSinceFire <- postProcess(sim$modelLand$timeSinceFire,
                                            to = sim$rasterToMatch)
         }
 
@@ -166,10 +166,10 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       }
 
       outDir <- reproducible::checkPath(file.path(outputPath(sim), paste0('pde_', Par$.studyAreaName)), create = T)
-      terra::writeRaster(sim$pde, file.path(outDir, paste0('pde_', Par$.studyAreaName, '.tif')))
+      terra::writeRaster(sim$pde, file.path(outDir, paste0('pde_', Par$.studyAreaName, '.tif')), overwrite = T)
 
       if(!is.null(sim$pdeMap)){
-        terra::writeRaster(sim$pdeMap, file.path(outDir, paste0('pdeMap_', Par$.studyAreaName, '.tif')))
+        terra::writeRaster(sim$pdeMap, file.path(outDir, paste0('pdeMap_', Par$.studyAreaName, '.tif')), overwrite = T)
       }
 
 
