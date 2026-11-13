@@ -10,7 +10,7 @@ defineModule(sim, list(
   citation = list("citation.bib"),
   documentation = list("NEWS.md", "README.md", "caribou_SSUD.Rmd"),
   reqdPkgs = list("SpaDES.core (>= 2.1.5.9002)", "ggplot2", 'Require', 'reproducible', 'data.table', 'terra','sf',
-                  'glmmTMB', 'broom.mixed', 'viridis', 'RColorBrewer',
+                  'glmmTMB', 'broom.mixed', 'googledrive', 'viridis', 'RColorBrewer',
                   'tidyterra', 'patchwork'),
   parameters = bindrows(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
@@ -482,9 +482,11 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     } else {
       message("Loading iSSA coefficients from cloud")
 
+      modelZip <- paste0("NMC_model_", Par$coefficientsModel, ".zip")
       coefficients <- prepInputs(
-        url = Par$modelsFolderID,
-        archive = paste0("NMC_model_", Par$coefficientsModel, ".zip"),
+        # the zip's own url: given the folder's, reproducible would download every zip in it
+        url = drive_file_in_folder(Par$modelsFolderID, modelZip),
+        archive = modelZip,
         targetFile = paste0(Par$coefficientsModel, "_fixed.csv"),
         destinationPath = dPath,
         fun = data.table::fread(targetFile)
