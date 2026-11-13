@@ -29,6 +29,39 @@ test_that("reclassifyCohortData() maps forest type, biomass-weighted age and bio
   expect_equal(as.vector(terra::values(out[["AGB (Mg/ha)"]])), c(1, 1, NA, 3, 1))
 })
 
+test_that("reclassifyCohortData() classes a stand by its conifer share, whatever the order of its cohorts", {
+  ## pixel group 1 is 80% conifer, 2 is 80% broadleaf, 3 is half and half
+  cohortData <- data.table::data.table(
+    pixelGroup = c(1L, 1L, 2L, 2L, 3L, 3L),
+    speciesCode = c("Pice_mar", "Popu_tre", "Pice_mar", "Popu_tre", "Pice_mar", "Popu_tre"),
+    B = c(80L, 20L, 20L, 80L, 50L, 50L),
+    age = 50L
+  )
+  pgm <- terra::rast(nrows = 1, ncols = 3, xmin = 0, xmax = 3, ymin = 0, ymax = 1, vals = 1:3)
+  names(pgm) <- "pixelGroup"
+
+  ## conifer (210), broadleaf (220), mixed (230), with the cohorts in either order
+  for (cd in list(cohortData, cohortData[rev(seq_len(nrow(cohortData)))])) {
+    out <- reclassifyCohortData(data.table::copy(cd), "LandR", fixture_spp(), pgm)
+    expect_equal(as.vector(terra::values(out[["forest type"]])), c(210, 220, 230))
+  }
+})
+
+test_that("reclassifyCohortData() compares the conifer share, not the broadleaf share, with the mixed band", {
+  ## 30% conifer is below a band of (0.55, 0.9), so broadleaf, though the 70% broadleaf is inside it
+  cohortData <- data.table::data.table(
+    pixelGroup = c(2L, 2L),
+    speciesCode = c("Pice_mar", "Popu_tre"),
+    B = c(30L, 70L),
+    age = c(40L, 80L)
+  )
+  pgm <- terra::rast(nrows = 1, ncols = 1, xmin = 0, xmax = 1, ymin = 0, ymax = 1, vals = 2L)
+  names(pgm) <- "pixelGroup"
+
+  out <- reclassifyCohortData(cohortData, "LandR", fixture_spp(), pgm, mixedForestCutoffs = c(0.55, 0.9))
+  expect_equal(terra::values(out[["forest type"]])[[1]], 220)
+})
+
 test_that("reclassifyCohortData() takes the mixed-forest band from mixedForestCutoffs", {
   cohortData <- data.table::data.table(
     pixelGroup = c(2L, 2L),
