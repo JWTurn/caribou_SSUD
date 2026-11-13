@@ -38,17 +38,22 @@ mod2UD <- function(mod, envlayers, studyArea, prefix = NULL, normalize = TRUE) {
 
 #' fixed-effect coefficients of an iSSA model, as a `data.table` with columns `term` and `estimate`
 #' `mod` is a glmmTMB model, or a table with those two columns (others, e.g. the `se`, `z` and `p`
-#' of hsaCEtool's `<model>_fixed.csv`, are dropped)
+#' of hsaCEtool's `<model>_fixed.csv`, are dropped), or a list holding one of these
 coef_tab <- function(mod) {
+  if (is.list(mod) && !is.object(mod)) {
+    if (length(mod) != 1L) {
+      stop('coef_tab() needs one model or coefficients table; the list holds ', length(mod), call. = FALSE)
+    }
+    mod <- mod[[1]]
+  }
   if (is.data.frame(mod)) {
     miss <- setdiff(c('term', 'estimate'), names(mod))
     if (length(miss)) {
       stop('the coefficients table lacks column(s): ', paste(miss, collapse = ', '), call. = FALSE)
     }
-    return(data.table(term = as.character(mod$term), estimate = as.numeric(mod$estimate)))
+    return(data.table(term = as.character(mod$term), estimate = as.numeric(as.character(mod$estimate))))
   }
-  fe <- fixef(mod)[['cond']]
-  data.table(term = names(fe), estimate = unname(fe))
+  make_betas_tab(mod)
 }
 
 #' prepares pde and feeds into `make_pde_map()`

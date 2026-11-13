@@ -32,6 +32,8 @@ test_that("a fitted model and its coefficients table give the same PDE", {
   tab <- coef_tab(fit)
   expect_identical(names(tab), c("term", "estimate"))
   expect_identical(tab$term, names(glmmTMB::fixef(fit)$cond))
+  expect_equal(tab$estimate, unname(glmmTMB::fixef(fit)$cond))
+  expect_identical(coef_tab(list(fit)), tab)
   expect_equal(
     terra::values(mod2UD(tab, envlayers(), studyArea())$pde),
     terra::values(mod2UD(fit, envlayers(), studyArea())$pde)
@@ -41,4 +43,28 @@ test_that("a fitted model and its coefficients table give the same PDE", {
 test_that("coef_tab() names the columns a coefficients table lacks", {
   expect_error(coef_tab(data.frame(term = "x_end", beta = 1)), "estimate")
   expect_error(coef_tab(data.frame(name = "x_end", beta = 1)), "term, estimate")
+})
+
+test_that("coef_tab() unwraps a list of one model or table, and stops for any other length", {
+  coefs <- data.frame(term = c("x_end", "y_end"), estimate = c(0.5, 0.25))
+  expect_identical(coef_tab(list(coefs)), coef_tab(coefs))
+  expect_error(coef_tab(list(a = coefs, b = coefs)), "one model.*2")
+  expect_error(coef_tab(list()), "one model.*0")
+})
+
+test_that("coef_tab() reads a factor estimate column as its values, not its level codes", {
+  coefs <- data.frame(term = c("x_end", "y_end"), estimate = factor(c("0.5", "0.25")))
+  expect_identical(coef_tab(coefs)$estimate, c(0.5, 0.25))
+})
+
+test_that("coef_tab() takes a fitted model's coefficients from make_betas_tab()", {
+  ## the module's R/ files are sourced, not a package, so rebind the function where coef_tab() finds it
+  rlang::local_bindings(
+    make_betas_tab = function(mod) data.table(term = "x_end", estimate = 2),
+    .env = environment(coef_tab)
+  )
+  expect_identical(
+    coef_tab(structure(list(), class = "glmmTMB")),
+    data.table(term = "x_end", estimate = 2)
+  )
 })
