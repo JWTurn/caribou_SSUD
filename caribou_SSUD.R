@@ -33,15 +33,21 @@ defineModule(sim, list(
     defineParameter("predictLastYear", "logical", TRUE, NA, NA,
                     paste0("If last year of simulation is not multiple of",
                            " predictionInterval, should it predict for the last year too?")),
-    defineParameter("simulationScale", "character", "jurisdictional", NA, NA,
-                    paste0("Should the simulation use jurisdictional or global scale?",
-                           "defaults to jurisdictional")),
+    defineParameter("simulationScale", "character", "global", NA, NA,
+                    paste0("Which models to predict: 'global' (the global model, over studyAreaCaribou),",
+                           " 'regional' (one model per region in `jurisdiction`, each over its area in",
+                           " studyArea_juris), or 'both'. 'jurisdictional' is read as 'regional'.")),
+    defineParameter("baselineSource", "character", NA, NA, NA,
+                    paste0("A premade baseline, used when `pde` is not supplied: a folder, a .zip file,",
+                           " or a URL (e.g. of a .zip on Google Drive) holding `pde_<model>.tif` (and",
+                           " `pdeMap_<model>.tif` if normalizePDE) for each model, as this module writes",
+                           " them. If NA, the baseline is made from modelLand and saved to outputPath.")),
     defineParameter("normalizePDE", "logical", TRUE,
                     desc = "Whether to normalize PDE inside SSUD (FALSE for tmux workflow)"),
     defineParameter("jurisdiction", "character",c("BC","SK","MB", "ON", "NTYT", "NT"),
                     desc = "A list of jurisdictions to use for PDE creation"),
-    defineParameter("ecotype", "character",c("boreal", 'northern_mountain'),
-                    desc = "Which ecotype of caribou were modelled"),
+    defineParameter("ecotype", "character", "boreal",
+                    desc = "Which ecotype of caribou were modelled: 'boreal' or 'northern_mountain'"),
     #####
     defineParameter(".plots", "character", "screen", NA, NA,
                     "Used by Plots function, which can be optionally used here"),
@@ -96,17 +102,31 @@ defineModule(sim, list(
     expectsInput(objectName = "studyAreaCaribou", objectClass = "SpatVector",
                  desc = "a single polygon derived from the full extent of caribou locations used for the global model"),
     expectsInput(objectName = "rasterToMatch_SSUD", objectClass = "spatRaster",
-                 desc = "Raster to match for SSUD")
+                 desc = "Raster to match for SSUD"),
+    expectsInput(objectName = "studyArea_juris", objectClass = "list",
+                 desc = paste("Named list of SpatVectors, one area per region (e.g. jurisdiction), for the",
+                              "regional models. Not needed when simulationScale is 'global'.")),
+    expectsInput(objectName = "pde", objectClass = "list",
+                 desc = paste("Baseline PDE (raw utility if normalizePDE is FALSE): a named list with one",
+                              "SpatRaster per model ('global' and/or a region). If not supplied, read from",
+                              "baselineSource, else made from modelLand.")),
+    expectsInput(objectName = "pdeMap", objectClass = "list",
+                 desc = "Baseline binned PDE maps, named as `pde`; NULL if normalizePDE is FALSE."),
+    expectsInput(objectName = "fixedSSUD", objectClass = "SpatRaster",
+                 desc = paste("Dynamic mode: the modelLand layers that do not change in forecasts. If not",
+                              "supplied, taken from modelLand.")),
+    expectsInput(objectName = "baselineYear", objectClass = "numeric",
+                 desc = "Dynamic mode: year of the baseline landscape. Defaults to max(histLandYears).")
   ),
   outputObjects = bindrows(
     createsOutput("timeSinceFire", "SpatRaster",
                   "If dynamic, map of time since last burn used in model - with pixels that never burn receiving NA"),
-    createsOutput(objectName = 'pde', objectClass = 'SpatRaster',
-                  desc = 'Current (pre simulation) Raw pde calculation'),
-    createsOutput(objectName = 'pdeMap', objectClass = 'SpatRaster',
-                  desc = 'Current (pre simulation) binned map of pde UD for intensity of selection'),
-    createsOutput(objectName = 'simPde', objectClass = 'SpatRaster',
-                  desc = 'Raw pde calculation from sim layers'),
+    createsOutput(objectName = 'pde', objectClass = 'list',
+                  desc = 'Current (pre simulation) Raw pde calculation, one SpatRaster per model'),
+    createsOutput(objectName = 'pdeMap', objectClass = 'list',
+                  desc = 'Current (pre simulation) binned map of pde UD for intensity of selection, one SpatRaster per model'),
+    createsOutput(objectName = 'simPde', objectClass = 'list',
+                  desc = 'Raw pde calculation from sim layers, by year, then one SpatRaster per model'),
     createsOutput(objectName = 'simPdeMap', objectClass = 'list',
                   desc = 'Forcast (simulated) binned map of pde UD for intensity of selection by year')
 
@@ -119,8 +139,9 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     init = {
 
 
-      # Baseline always runs
-      sim <- scheduleEvent(sim, time(sim), "caribou_SSUD", "buildBaselineSSUD")
+      # The baseline (sim$pde, sim$pdeMap) is made in .inputObjects(), or here if it needed objects
+      # that other modules make; static mode stops there
+      sim <- setupBaseline(sim)
 
       if (Par$simulationProcess == "dynamic") {
         if(Par$ecotype == 'boreal'){
@@ -138,114 +159,11 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
         sim <- scheduleEvent(sim, P(sim)$predictStartYear, "caribou_SSUD", "simLayers")
         sim <- scheduleEvent(sim, P(sim)$predictStartYear, "caribou_SSUD", "calcSimPde")
 
-      }
-
-      if (Par$predictLastYear) {
-        sim <- scheduleEvent(sim, end(sim), "caribou_SSUD", "simLayers")
-      }
-
-
-    },
-
-    buildBaselineSSUD = {
-
-      message("Building baseline landscape")
-
-      # envlayers for PDE
-      envlayers <- list2env(setNames(lapply(names(sim$modelLand), function(n) sim$modelLand[[n]]),names(sim$modelLand)),parent = baseenv())
-
-      outDir <- reproducible::checkPath(file.path(outputPath(sim), paste0('pde_', Par$.studyAreaName)), create = T)
-
-      # PDEs
-      if(Par$ecotype == 'boreal'){
-        ud <- makeBorealPDE(mods = sim$iSSAmodels, studyAreaJuris = sim$studyArea_juris,  juris = Par$jurisdiction,
-                            envLayers = envlayers, normalizePDE = Par$normalizePDE, savePath = outDir)
-        sim$pde <- ud$pde
-        sim$pdeMap <- if (Par$simulationScale != "global") ud$pdeMap
-      }
-
-      if(Par$ecotype == 'northern_mountain'){
-        ud <- mod2UD(
-          mod = sim$iSSAcoefficients,
-          envlayers = envlayers,
-          studyArea = sim$studyAreaCaribou,
-          normalize = Par$normalizePDE
-        )
-
-        if (Par$normalizePDE) {
-          sim$pde <- ud$pde
-          sim$pdeMap <- as.numeric(ud$map)
-
-        } else {
-          sim$pde <- ud$utility
-          sim$pdeMap <- NULL
+        # the last year, unless the predictionInterval already lands on it
+        if (Par$predictLastYear && (end(sim) - P(sim)$predictStartYear) %% P(sim)$predictionInterval != 0) {
+          sim <- scheduleEvent(sim, end(sim), "caribou_SSUD", "simLayers")
+          sim <- scheduleEvent(sim, end(sim), "caribou_SSUD", "calcSimPde")
         }
-
-        terra::writeRaster(sim$pde, file.path(outDir, paste0('pde_', Par$.studyAreaName, '.tif')), filetype = "GTiff", overwrite = T)
-
-        if(!is.null(sim$pdeMap)){
-          terra::writeRaster(sim$pdeMap, file.path(outDir, paste0('pdeMap_', Par$.studyAreaName, '.tif')), filetype = "GTiff", overwrite = T)
-        }
-      }
-
-
-      message("Baseline PDE complete")
-
-      # forecast setup
-      message("Setting up baseline landscape for forecasting")
-
-      if (is.null(sim$baselineYear)){
-        sim$baselineYear <- max(Par$histLandYears)
-      }
-
-  # sim$fixedSSUD <- list2env(list(
-  #   prop_veg = envlayers$prop_veg,
-  #   prop_wets = envlayers$prop_wets,
-  #   distpaved = envlayers$distpaved,
-  #   distunpaved = envlayers$distunpaved,
-  #   distpolys = envlayers$distpolys,
-  #   timeSinceHarvest0 = envlayers$timeSinceHarvest
-  # ), parent = baseenv())
-
-      # To be passed to fire forecasts for historic fire if dynamic
-      if(Par$simulationProcess == 'dynamic') {
-
-        if(Par$ecotype == 'boreal'){
-          sim$fixedSSUD <- list2env(list(
-            prop_veg = envlayers$prop_veg,
-            prop_wets = envlayers$prop_wets,
-            distpaved = envlayers$distpaved,
-            distunpaved = envlayers$distunpaved,
-            distpolys = envlayers$distpolys,
-            timeSinceHarvest0 = envlayers$timeSinceHarvest
-          ), parent = baseenv())
-
-
-        }
-
-        if(Par$ecotype == 'northern_mountain'){
-          # sim$fixedSSUD <- list2env(list(
-          #   prop_veg_250 = envlayers$prop_veg_250,
-          #   dist_lf_250 = envlayers$dist_lf_250,
-          #   #distunpaved = envlayers$distunpaved,
-          #   dist_poly_250 = envlayers$dist_poly_250,
-          #   timeSinceHarvest0 = envlayers$timeSinceHarvest
-          # ), parent = baseenv())
-
-          sim$fixedSSUD <- rast(
-            list(
-              prop_veg_250 = sim$modelLand$prop_veg_250,
-            dist_lf_250 = sim$modelLand$dist_lf_250,
-            #distunpaved = envlayers$distunpaved,
-            dist_poly_250 = sim$modelLand$dist_poly_250
-            )
-          )
-
-        }
-
-
-        # TODO for when Harvest module integrated...
-        #sim$timeSinceHarvest <- envlayers$timeSinceHarvest
       }
 
     },
@@ -262,7 +180,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
 
       # ensure baseline fixed layers were created
       if (is.null(sim$fixedSSUD) || is.null(sim$baselineYear))
-        stop("Missing sim$fixedSSUD / sim$baselineYear. Did buildBaselineSSUD run?")
+        stop("Missing sim$fixedSSUD / sim$baselineYear, which .inputObjects() makes in dynamic mode")
 
       # Fixed layers from baseline
 
@@ -393,37 +311,13 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       outDir <- reproducible::checkPath(file.path(outputPath(sim), paste0('pde_', Par$.studyAreaName), 'sims'), create = T)
 
 
-      # boreal
-      if(Par$ecotype == 'boreal'){
-        ud <- makeBorealPDE(mods = sim$iSSAmodels, studyAreaJuris = sim$studyArea_juris,  juris = Par$jurisdiction,
-                            envLayers = sim$simEnv[[key]], normalizePDE = Par$normalizePDE,
-                            savePath = outDir, key = key)
-        sim$simPde[[key]] <- ud$pde
-        sim$simPdeMap[[key]] <- ud$pdeMap
-      }
-
-      # northern mountain
-      if(Par$ecotype == 'northern_mountain'){
-        ud <- mod2UD(
-          mod = sim$iSSAcoefficients,
-          envlayers = sim$simEnv[[key]],
-          studyArea = sim$studyAreaCaribou,
-          normalize = Par$normalizePDE
-        )
-
-        if (Par$normalizePDE) {
-          sim$simPde[[key]] <- ud$pde
-          sim$simPdeMap[[key]] <- as.numeric(ud$map)
-
-        } else {
-          sim$simPde[[key]]<- ud$utility
-          sim$simPdeMap[[key]] <- NULL
-        }
-
-        terra::writeRaster(sim$simPde[[key]], file.path(outDir, paste0("pde_", Par$.studyAreaName, '_', key, '.tif')), filetype = "GTiff", overwrite = TRUE)
-        terra::writeRaster(sim$simPdeMap[[key]], file.path(outDir, paste0("pdeMap_", Par$.studyAreaName, '_', key, '.tif')), filetype = "GTiff", overwrite = TRUE)
-
-      }
+      # forecast the same models as the baseline
+      mods <- pdeModels(names(sim$pde), Par$ecotype, sim$iSSAmodels, sim$iSSAcoefficients)
+      ud <- makePDEs(mods = mods, envLayers = sim$simEnv[[key]], studyAreaCaribou = sim$studyAreaCaribou,
+                     studyArea_juris = sim$studyArea_juris, normalizePDE = Par$normalizePDE,
+                     savePath = outDir, key = key)
+      sim$simPde[[key]] <- ud$pde
+      sim$simPdeMap[[key]] <- ud$pdeMap
 
 
       message(paste0("Finished creating PDE for: ", thisYear))
@@ -442,6 +336,13 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
   cacheTags <- c(currentModule(sim), "function:.inputObjects") ## uncomment this if Cache is being used
   dPath <- asPath(getOption("reproducible.destinationPath", dataPath(sim)), 1)
   message(currentModule(sim), ": using dataPath '", dPath, "'.")
+
+  if (length(Par$ecotype) != 1 || !Par$ecotype %in% c("boreal", "northern_mountain")) {
+    stop("ecotype must be one of 'boreal' or 'northern_mountain'")
+  }
+
+  # the models the baseline (and forecasts) predict
+  modelNames <- pdeModelNames(Par$simulationScale, Par$jurisdiction)
 
   # load caribou studyArea
   if (!suppliedElsewhere("studyAreaCaribou", sim)) {
@@ -463,7 +364,8 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       url = Par$outputFolderID
     )
 
-    sim$modelLand <- as.list(modelLandFile)
+    # as.list() drops the layer names, which make_pde() needs
+    sim$modelLand <- setNames(as.list(modelLandFile), names(modelLandFile))
   }
 
   # whether iSSAmodels was supplied, recorded before the boreal block below can fill it in
@@ -511,16 +413,81 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     }
   }
 
-  # load jurisdictional study areas
-  if (!suppliedElsewhere("studyArea_juris", sim)) {
+  # load jurisdictional study areas, needed only for regional models
+  if (any(modelNames != "global") && !suppliedElsewhere("studyArea_juris", sim)) {
     studyareaJuris<- prepInputs(
       targetFile = paste0("studyArea_juris_", Par$.studyAreaName, ".rds"),
       destinationPath = dPath,
       url = Par$outputFolderID,
-      fun = terra::vect(x = targetFile)
+      fun = readStudyAreaJuris(targetFile)
     )
-    sim$studyArea_juris <- studyArea_juris
+    sim$studyArea_juris <- studyareaJuris
 
+  }
+
+  # the baseline and forecast setup; init makes what needs objects that other modules make later
+  ready <- !is.null(sim$modelLand) &&
+    !is.null(if (Par$ecotype == "boreal") sim$iSSAmodels else sim$iSSAcoefficients)
+  if (ready) {
+    sim <- setupBaseline(sim, objects = c("fixedSSUD", "baselineYear", "pde")[
+      !c(suppliedElsewhere("fixedSSUD", sim), suppliedElsewhere("baselineYear", sim), suppliedElsewhere("pde", sim))
+    ])
+  }
+
+  return(invisible(sim))
+}
+
+## The baseline and forecast setup, made from modelLand and the models: the `objects` named, each
+## only if not already in sim. Called from .inputObjects() when modelLand and the models are already
+## there, and from init for anything still missing (e.g. when other modules make them).
+setupBaseline <- function(sim, objects = c("fixedSSUD", "baselineYear", "pde")) {
+
+  dPath <- asPath(getOption("reproducible.destinationPath", dataPath(sim)), 1)
+  modelNames <- pdeModelNames(P(sim)$simulationScale, P(sim)$jurisdiction)
+
+  # forecast setup: the landscape layers that stay fixed, and the year they are from
+  if (P(sim)$simulationProcess == "dynamic") {
+
+    if ("fixedSSUD" %in% objects && is.null(sim$fixedSSUD)) {
+      # layer names in fixedSSUD = names in modelLand
+      fixedLayers <- if (P(sim)$ecotype == "boreal") {
+        c(prop_veg = "prop_veg", prop_wets = "prop_wets", distpaved = "distpaved",
+          distunpaved = "distunpaved", distpolys = "distpolys", timeSinceHarvest0 = "timeSinceHarvest")
+      } else {
+        c(prop_veg_250 = "prop_veg_250", dist_lf_250 = "dist_lf_250", dist_poly_250 = "dist_poly_250")
+      }
+      sim$fixedSSUD <- terra::rast(lapply(fixedLayers, function(n) sim$modelLand[[n]]))
+      names(sim$fixedSSUD) <- names(fixedLayers)
+    }
+
+    if ("baselineYear" %in% objects && is.null(sim$baselineYear)) {
+      sim$baselineYear <- max(P(sim)$histLandYears)
+    }
+  }
+
+  # baseline PDEs and maps: from a premade baseline if one is given, else made from modelLand
+  if ("pde" %in% objects && is.null(sim$pde)) {
+
+    if (!is.na(P(sim)$baselineSource)) {
+      message("Reading the premade baseline from ", P(sim)$baselineSource)
+      ud <- readBaseline(baselineDir(P(sim)$baselineSource, dPath), modelNames, P(sim)$normalizePDE)
+
+    } else {
+      message("Building baseline PDEs for: ", paste(modelNames, collapse = ", "))
+
+      envlayers <- list2env(setNames(lapply(names(sim$modelLand), function(n) sim$modelLand[[n]]), names(sim$modelLand)),
+                            parent = baseenv())
+      outDir <- reproducible::checkPath(file.path(outputPath(sim), paste0('pde_', P(sim)$.studyAreaName)), create = T)
+
+      ud <- makePDEs(mods = pdeModels(modelNames, P(sim)$ecotype, sim$iSSAmodels, sim$iSSAcoefficients),
+                     envLayers = envlayers, studyAreaCaribou = sim$studyAreaCaribou,
+                     studyArea_juris = sim$studyArea_juris, normalizePDE = P(sim)$normalizePDE,
+                     savePath = outDir)
+      message("Baseline PDEs saved to: ", outDir)
+    }
+
+    sim$pde <- ud$pde
+    sim$pdeMap <- ud$pdeMap
   }
 
   return(invisible(sim))
