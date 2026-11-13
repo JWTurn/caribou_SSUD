@@ -4,13 +4,13 @@ defineModule(sim, list(
   keywords = c('steady-state utilization distribution', 'iSSA'),
   authors = structure(list(list(given = c("Julie", "W"), family = "Turner", role = c("aut", "cre"), email = "julwturner@gmail.com", comment = NULL)), class = "person"),
   childModules = character(0),
-  version = list(caribou_SSUD = "0.0.0.9000"),
+  version = list(caribou_SSUD = "0.0.0.9001"),
   timeframe = as.POSIXlt(c(NA, NA)),
   timeunit = "year",
   citation = list("citation.bib"),
   documentation = list("NEWS.md", "README.md", "caribou_SSUD.Rmd"),
   reqdPkgs = list("SpaDES.core (>= 2.1.5.9002)", "ggplot2", 'Require', 'reproducible', 'data.table', 'terra','sf',
-                  'glmmTMB', 'broom.mixed', 'viridis', 'RColorBrewer',
+                  'glmmTMB', 'broom.mixed', 'googledrive', 'viridis', 'RColorBrewer',
                   'tidyterra', 'patchwork'),
   parameters = bindrows(
     #defineParameter("paramName", "paramClass", value, min, max, "parameter description"),
@@ -63,12 +63,23 @@ defineModule(sim, list(
     defineParameter(".useCache", "logical", FALSE, NA, NA,
                     "Should caching of events or module be used?"),
     defineParameter("outputFolderID", "character", "https://drive.google.com/drive/folders/1CRSY_tJucL3E8VDgUYEv9WXuG1nKImH3", NA, NA,
-                    "Google Drive folder ID for workflow outputs")
+                    "Google Drive folder ID for workflow outputs"),
+    defineParameter("coefficientsModel", "character", "full_to2020", NA, NA,
+                    "Name of the northern mountain iSSA model whose coefficients are read"),
+    defineParameter("modelsFolderID", "character",
+                    "https://drive.google.com/drive/folders/1NMhR1zwWc6jYjhKjd7o53VsSWJ9wP5ZM", NA, NA,
+                    "Google Drive folder holding the northern mountain model zips")
   ),
   inputObjects = bindrows(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
     expectsInput(objectName = 'iSSAmodels', objectClass = 'list',
-                 desc = 'A list of glmmTMB iSSA models by jurisdiction or global models'),
+                 desc = 'A list of glmmTMB iSSA models by jurisdiction or global models (boreal ecotype)'),
+    expectsInput(objectName = 'iSSAcoefficients', objectClass = 'data.table',
+                 desc = paste('Fixed-effect coefficients of the northern mountain iSSA model: one row per',
+                              'term, with columns `term` and `estimate` (others, e.g. those of hsaCEtool\'s',
+                              '`<model>_fixed.csv`, are ignored). If not supplied, it is taken from',
+                              '`iSSAmodels` when that is supplied, else read from `<coefficientsModel>_fixed.csv`',
+                              'in `NMC_model_<coefficientsModel>.zip` in `modelsFolderID`.')),
     expectsInput("cohortData", "data.table",
                  desc = paste("`data.table` with cohort-level information on age and biomass, by `pixelGroup` and ecolocation",
                               "(i.e., `ecoregionGroup`). If supplied, it must have the following columns: `pixelGroup` (integer),",
@@ -149,7 +160,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
 
       if(Par$ecotype == 'northern_mountain'){
         ud <- mod2UD(
-          mod = sim$iSSAmodels,
+          mod = sim$iSSAcoefficients,
           envlayers = envlayers,
           studyArea = sim$studyAreaCaribou,
           normalize = Par$normalizePDE
@@ -387,7 +398,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       # northern mountain
       if(Par$ecotype == 'northern_mountain'){
         ud <- mod2UD(
-          mod = sim$iSSAmodels,
+          mod = sim$iSSAcoefficients,
           envlayers = sim$simEnv[[key]],
           studyArea = sim$studyAreaCaribou,
           normalize = Par$normalizePDE
@@ -440,8 +451,11 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     sim$modelLand <- as.list(modelLandFile)
   }
 
-  # load iSSA models
-  if (!suppliedElsewhere("iSSAmodels", sim)) {
+  # whether iSSAmodels was supplied, recorded before the boreal block below can fill it in
+  modelsSupplied <- suppliedElsewhere("iSSAmodels", sim)
+
+  # load iSSA models (the boreal ecotype; northern mountain uses iSSAcoefficients)
+  if ("boreal" %in% Par$ecotype && !modelsSupplied) {
 
     message("Loading iSSA models from cloud")
 
@@ -459,6 +473,27 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     }
 
     sim$iSSAmodels <- iSSAmodels
+  }
+
+  # load the northern mountain model's coefficients: from a supplied model, else from the cloud
+  if ("northern_mountain" %in% Par$ecotype && !suppliedElsewhere("iSSAcoefficients", sim)) {
+    if (modelsSupplied) {
+      sim$iSSAcoefficients <- coef_tab(sim$iSSAmodels)
+    } else {
+      message("Loading iSSA coefficients from cloud")
+
+      modelZip <- paste0("NMC_model_", Par$coefficientsModel, ".zip")
+      coefficients <- prepInputs(
+        # the zip's own url: given the folder's, reproducible would download every zip in it
+        url = drive_file_in_folder(Par$modelsFolderID, modelZip),
+        archive = modelZip,
+        targetFile = paste0(Par$coefficientsModel, "_fixed.csv"),
+        destinationPath = dPath,
+        fun = data.table::fread(targetFile)
+      )
+
+      sim$iSSAcoefficients <- coef_tab(coefficients)
+    }
   }
 
   # load jurisdictional study areas
