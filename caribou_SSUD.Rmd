@@ -53,11 +53,11 @@ This is a template for module documentation, and should be changed to reflect yo
 ### Module inputs and parameters
 
 Describe input data required by the module and how to obtain it (e.g., directly from online sources or supplied by other modules)
-If `sourceURL` is specified, `downloadData("caribou_SSUD", "C:/Users/julie/Documents/git-local/caribou_SSUD")` may be sufficient.
+If `sourceURL` is specified, `downloadData("caribou_SSUD", "..")` may be sufficient.
 Table \@ref(tab:moduleInputs-caribou-SSUD) shows the full list of module inputs.
 
 ```{r moduleInputs-caribou-SSUD, echo = FALSE, eval = TRUE, message = FALSE, warning = FALSE}
-df_inputs <- SpaDES.core::moduleInputs("caribou_SSUD", "C:/Users/julie/Documents/git-local/caribou_SSUD")
+df_inputs <- SpaDES.core::moduleInputs("caribou_SSUD", "..")
 knitr::kable(df_inputs,
              caption = "List of (ref:caribou-SSUD) input objects and their description.") |>
   kableExtra::kable_styling(latex_options = "scale_down", full_width = TRUE)
@@ -67,7 +67,7 @@ Provide a summary of user-visible parameters (Table \@ref(tab:moduleParams-carib
 
 
 ```{r moduleParams-caribou-SSUD, echo = FALSE, eval = TRUE, message = FALSE, warning = FALSE}
-df_params <- SpaDES.core::moduleParams("caribou_SSUD", "C:/Users/julie/Documents/git-local/caribou_SSUD")
+df_params <- SpaDES.core::moduleParams("caribou_SSUD", "..")
 knitr::kable(df_params, caption = "List of (ref:caribou-SSUD) parameters and their description.") |>
   kableExtra::kable_styling(latex_options = "scale_down", full_width = TRUE)
 ```
@@ -89,7 +89,7 @@ Write what is saved.
 Description of the module outputs (Table \@ref(tab:moduleOutputs-caribou-SSUD)).
 
 ```{r moduleOutputs-caribou-SSUD, echo = FALSE, eval = TRUE, message = FALSE, warning = FALSE}
-df_outputs <- SpaDES.core::moduleOutputs("caribou_SSUD", "C:/Users/julie/Documents/git-local/caribou_SSUD")
+df_outputs <- SpaDES.core::moduleOutputs("caribou_SSUD", "..")
 knitr::kable(df_outputs, caption = "List of (ref:caribou-SSUD) outputs and their description.") |>
   kableExtra::kable_styling(latex_options = "scale_down", full_width = TRUE)
 ```
