@@ -50,7 +50,9 @@ local_prepInputs_mock <- function(mock, env = parent.frame()) {
 run_simInit <- function(paths, objects, params = list()) {
   suppressMessages(SpaDES.core::simInit(
     times = list(start = 2025, end = 2025),
-    params = list(caribou_SSUD = c(list(ecotype = "northern_mountain", .useCache = FALSE), params)),
+    params = list(
+      caribou_SSUD = utils::modifyList(list(ecotype = "northern_mountain", .useCache = FALSE), params)
+    ),
     modules = "caribou_SSUD",
     paths = list(
       modulePath = paths$modulePath,
@@ -68,7 +70,7 @@ test_that("the module's metadata parses, with the inputs .inputObjects() fetches
   paths <- local_spades_sandbox()
 
   md <- SpaDES.core::moduleMetadata(module = "caribou_SSUD", path = paths$modulePath)
-  expect_contains(md$inputObjects$objectName, c("iSSAmodels", "modelLand"))
+  expect_contains(md$inputObjects$objectName, c("iSSAmodels", "modelLand", "studyArea_juris"))
   expect_contains(md$parameters$paramName, c("ecotype", "outputFolderID", "normalizePDE"))
 })
 
@@ -112,4 +114,40 @@ test_that("simInit() downloads only a missing input, from outputFolderID", {
   expect_identical(calls, list(list(targetFile = "modelLand.tif", url = folder)))
   expect_length(sim$modelLand, 2)
   expect_equal(as.vector(terra::values(sim$modelLand[[2]])), c(0, 1, 0, 1))
+})
+
+test_that("simInit() for the northern mountain ecotype does not fetch the jurisdictions' study areas", {
+  skip_if_not_installed("SpaDES.core")
+  paths <- local_spades_sandbox()
+  calls <- character()
+  local_prepInputs_mock(function(targetFile = NULL, url = NULL, ...) {
+    calls <<- c(calls, targetFile)
+    stop("download attempted: ", targetFile)
+  })
+  coefs <- data.frame(term = "x_end", estimate = 1)
+
+  sim <- run_simInit(paths, list(iSSAcoefficients = coefs, modelLand = list(x = fixture_envlayers()$x)))
+  expect_length(calls, 0)
+  expect_null(sim$studyArea_juris)
+})
+
+test_that("simInit() for the boreal ecotype fetches the jurisdictions' study areas and keeps them", {
+  skip_if_not_installed("SpaDES.core")
+  paths <- local_spades_sandbox()
+  calls <- list()
+  juris <- list(NTYT = fixture_area())
+  local_prepInputs_mock(function(targetFile = NULL, url = NULL, ...) {
+    calls[[length(calls) + 1L]] <<- list(targetFile = targetFile, url = url)
+    if (!startsWith(targetFile, "studyArea_juris_")) stop("unexpected download: ", targetFile)
+    juris
+  })
+  folder <- "https://drive.google.com/drive/folders/aTestFolder"
+
+  sim <- run_simInit(
+    paths,
+    list(iSSAmodels = list(fixture_fit()), modelLand = list(x = fixture_envlayers()$x)),
+    params = list(ecotype = "boreal", outputFolderID = folder, .studyAreaName = "test")
+  )
+  expect_identical(calls, list(list(targetFile = "studyArea_juris_test.rds", url = folder)))
+  expect_named(sim$studyArea_juris, "NTYT")
 })

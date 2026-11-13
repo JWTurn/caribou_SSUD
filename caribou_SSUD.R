@@ -95,6 +95,9 @@ defineModule(sim, list(
                   desc = "A list of rasters aligned with the model outputs to be used in UD modules"),
     expectsInput(objectName = "studyAreaCaribou", objectClass = "SpatVector",
                  desc = "a single polygon derived from the full extent of caribou locations used for the global model"),
+    expectsInput(objectName = "studyArea_juris", objectClass = "list",
+                 desc = paste("Study areas by jurisdiction, named by jurisdiction (boreal ecotype only). If not supplied,",
+                              "read from `studyArea_juris_<.studyAreaName>.rds` in `outputFolderID`.")),
     expectsInput(objectName = "rasterToMatch_SSUD", objectClass = "spatRaster",
                  desc = "Raster to match for SSUD")
   ),
@@ -506,9 +509,9 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     }
   }
 
-  # load jurisdictional study areas
-  if (!suppliedElsewhere("studyArea_juris", sim)) {
-    studyareaJuris<- prepInputs(
+  # load jurisdictional study areas (the boreal ecotype; northern mountain does not use them)
+  if ("boreal" %in% Par$ecotype && !suppliedElsewhere("studyArea_juris", sim)) {
+    studyArea_juris <- prepInputs(
       targetFile = paste0("studyArea_juris_", Par$.studyAreaName, ".rds"),
       destinationPath = dPath,
       url = Par$outputFolderID,
