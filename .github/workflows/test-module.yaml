@@ -56,11 +56,6 @@ jobs:
             github::PredictiveEcology/reproducible@b56c3003823a3bf5bd129dc1ebcdccb64c339589
             github::PredictiveEcology/SpaDES.core@a21acb0493692ea305560893702b2401d01da8ee
 
+      ## tests/run-tests.R limits the tests to 2 cores, as CRAN asks
       - name: Run tests
         run: Rscript tests/run-tests.R
-        env:
-          ## at most 2 cores, as CRAN asks (tests/run-tests.R also enforces it)
-          OMP_THREAD_LIMIT: 2
-          OMP_NUM_THREADS: 2
-          OPENBLAS_NUM_THREADS: 2
-          MKL_NUM_THREADS: 2
