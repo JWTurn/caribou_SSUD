@@ -168,6 +168,16 @@ test_that("simInit() reads a premade baseline from a URL in baselineSource, and 
   expect_false(dir.exists(file.path(paths$other, "pde_test")))
 })
 
+test_that("in dynamic mode, simInit() names the fixed layers modelLand lacks", {
+  skip_if_not_installed("SpaDES.core")
+  paths <- local_spades_sandbox()
+
+  expect_error(
+    run_simInit(paths, nm_objects(), params = list(simulationProcess = "dynamic")),
+    "prop_veg_250, dist_lf_250, dist_poly_250"
+  )
+})
+
 test_that("a static run makes only the baseline, and schedules no forecast", {
   skip_if_not_installed("SpaDES.core")
   paths <- local_spades_sandbox()

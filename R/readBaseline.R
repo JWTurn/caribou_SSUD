@@ -9,6 +9,8 @@ baselineDir <- function(source, destinationPath) {
   dir <- file.path(destinationPath, "baseline")
 
   if (file.exists(source)) {
+    # into an emptied folder, so no file of an earlier baseline is read
+    unlink(dir, recursive = TRUE)
     utils::unzip(source, exdir = dir)
   } else {
     prepInputs(url = source, destinationPath = dir, fun = NA)
@@ -29,6 +31,11 @@ readBaseline <- function(dir, modelNames, normalizePDE) {
 
     if (anyNA(found)) {
       stop("The premade baseline in ", dir, " has no ", paste(wanted[is.na(found)], collapse = ", "))
+    }
+
+    twice <- wanted[wanted %in% basename(files)[duplicated(basename(files))]]
+    if (length(twice)) {
+      stop("The premade baseline in ", dir, " has more than one ", paste(twice, collapse = ", "))
     }
 
     setNames(lapply(files[found], terra::rast), modelNames)

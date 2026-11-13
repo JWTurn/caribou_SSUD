@@ -41,3 +41,26 @@ test_that("baselineDir() takes a folder as it is and unpacks a .zip, even with t
   expect_identical(unpacked, file.path(dest, "baseline"))
   expect_named(readBaseline(unpacked, c("global", "BC"), normalizePDE = TRUE)$pde, c("global", "BC"))
 })
+
+test_that("baselineDir() unpacks a .zip into an emptied folder, so no file of an earlier baseline is read", {
+  dir <- write_baseline(normalizePDE = FALSE)
+  dest <- withr::local_tempdir()
+  stale <- file.path(dest, "baseline", "old")
+  dir.create(stale, recursive = TRUE)
+  terra::writeRaster(terra::rast(fixture_envlayers()$x, vals = 99), file.path(stale, "pde_global.tif"))
+
+  zip <- file.path(withr::local_tempdir(), "baseline.zip")
+  withr::with_dir(dir, utils::zip(zip, list.files(dir), flags = "-q"))
+  ud <- readBaseline(baselineDir(zip, dest), "global", normalizePDE = FALSE)
+
+  expect_equal(as.vector(terra::values(ud$pde$global)),
+               as.vector(terra::values(terra::rast(file.path(dir, "pde_global.tif")))))
+})
+
+test_that("readBaseline() stops when a model's file is there more than once", {
+  dir <- write_baseline(normalizePDE = FALSE)
+  dir.create(file.path(dir, "copy"))
+  file.copy(file.path(dir, "pde_global.tif"), file.path(dir, "copy"))
+
+  expect_error(readBaseline(dir, "global", normalizePDE = FALSE), "more than one pde_global.tif")
+})
