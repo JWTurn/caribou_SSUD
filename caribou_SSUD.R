@@ -64,9 +64,11 @@ defineModule(sim, list(
                     "Should caching of events or module be used?"),
     defineParameter("outputFolderID", "character", "https://drive.google.com/drive/folders/1CRSY_tJucL3E8VDgUYEv9WXuG1nKImH3", NA, NA,
                     "Google Drive folder ID for workflow outputs"),
-    defineParameter("coefficientsFile", "character", "iSSAcoefficients.csv", NA, NA,
-                    paste("File in `outputFolderID` holding the northern mountain model's coefficients",
-                          "(see `iSSAcoefficients`), read when `iSSAcoefficients` is not supplied"))
+    defineParameter("coefficientsModel", "character", "full_to2020", NA, NA,
+                    "Name of the northern mountain iSSA model whose coefficients are read"),
+    defineParameter("modelsFolderID", "character",
+                    "https://drive.google.com/drive/folders/1NMhR1zwWc6jYjhKjd7o53VsSWJ9wP5ZM", NA, NA,
+                    "Google Drive folder holding the northern mountain model zips")
   ),
   inputObjects = bindrows(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
@@ -76,7 +78,8 @@ defineModule(sim, list(
                  desc = paste('Fixed-effect coefficients of the northern mountain iSSA model: one row per',
                               'term, with columns `term` and `estimate` (others, e.g. those of hsaCEtool\'s',
                               '`<model>_fixed.csv`, are ignored). If not supplied, it is taken from',
-                              '`iSSAmodels` when that is supplied, else read from `coefficientsFile`.')),
+                              '`iSSAmodels` when that is supplied, else read from `<coefficientsModel>_fixed.csv`',
+                              'in `NMC_model_<coefficientsModel>.zip` in `modelsFolderID`.')),
     expectsInput("cohortData", "data.table",
                  desc = paste("`data.table` with cohort-level information on age and biomass, by `pixelGroup` and ecolocation",
                               "(i.e., `ecoregionGroup`). If supplied, it must have the following columns: `pixelGroup` (integer),",
@@ -448,8 +451,11 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     sim$modelLand <- as.list(modelLandFile)
   }
 
+  # whether iSSAmodels was supplied, recorded before the boreal block below can fill it in
+  modelsSupplied <- suppliedElsewhere("iSSAmodels", sim)
+
   # load iSSA models (the boreal ecotype; northern mountain uses iSSAcoefficients)
-  if ("boreal" %in% Par$ecotype && !suppliedElsewhere("iSSAmodels", sim)) {
+  if ("boreal" %in% Par$ecotype && !modelsSupplied) {
 
     message("Loading iSSA models from cloud")
 
@@ -471,15 +477,16 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
 
   # load the northern mountain model's coefficients: from a supplied model, else from the cloud
   if ("northern_mountain" %in% Par$ecotype && !suppliedElsewhere("iSSAcoefficients", sim)) {
-    if (suppliedElsewhere("iSSAmodels", sim)) {
+    if (modelsSupplied) {
       sim$iSSAcoefficients <- coef_tab(sim$iSSAmodels)
     } else {
       message("Loading iSSA coefficients from cloud")
 
       coefficients <- prepInputs(
-        targetFile = Par$coefficientsFile,
+        url = Par$modelsFolderID,
+        archive = paste0("NMC_model_", Par$coefficientsModel, ".zip"),
+        targetFile = paste0(Par$coefficientsModel, "_fixed.csv"),
         destinationPath = dPath,
-        url = Par$outputFolderID,
         fun = data.table::fread(targetFile)
       )
 
