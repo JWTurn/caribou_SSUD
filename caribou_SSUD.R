@@ -154,10 +154,14 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       # envlayers for PDE
       envlayers <- list2env(setNames(lapply(names(sim$modelLand), function(n) sim$modelLand[[n]]),names(sim$modelLand)),parent = baseenv())
 
+      outDir <- reproducible::checkPath(file.path(outputPath(sim), paste0('pde_', Par$.studyAreaName)), create = T)
+
       # PDEs
       if(Par$ecotype == 'boreal'){
-        makeBorealPDE(mods = sim$iSSAmodels, studyAreaJuris = sim$studyArea_juris,  juris = Par$jurisdiction,
-                      envLayers = envlayers, normalizePDE = Par$normalizePDE, simulationScale = Par$simulationScale)
+        ud <- makeBorealPDE(mods = sim$iSSAmodels, studyAreaJuris = sim$studyArea_juris,  juris = Par$jurisdiction,
+                            envLayers = envlayers, normalizePDE = Par$normalizePDE, savePath = outDir)
+        sim$pde <- ud$pde
+        sim$pdeMap <- if (Par$simulationScale != "global") ud$pdeMap
       }
 
       if(Par$ecotype == 'northern_mountain'){
@@ -176,13 +180,12 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
           sim$pde <- ud$utility
           sim$pdeMap <- NULL
         }
-      }
 
-      outDir <- reproducible::checkPath(file.path(outputPath(sim), paste0('pde_', Par$.studyAreaName)), create = T)
-      terra::writeRaster(sim$pde, file.path(outDir, paste0('pde_', Par$.studyAreaName, '.tif')), overwrite = T)
+        terra::writeRaster(sim$pde, file.path(outDir, paste0('pde_', Par$.studyAreaName, '.tif')), filetype = "GTiff", overwrite = T)
 
-      if(!is.null(sim$pdeMap)){
-        terra::writeRaster(sim$pdeMap, file.path(outDir, paste0('pdeMap_', Par$.studyAreaName, '.tif')), overwrite = T)
+        if(!is.null(sim$pdeMap)){
+          terra::writeRaster(sim$pdeMap, file.path(outDir, paste0('pdeMap_', Par$.studyAreaName, '.tif')), filetype = "GTiff", overwrite = T)
+        }
       }
 
 
@@ -368,12 +371,12 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
 
       if(Par$ecotype == 'boreal'){
         jur <- paste(Par$jurisdiction, collapse = "")
-        terra::writeRaster(simLand, file.path(outDir, paste0("pdeLayers_", jur, key, ".tif")), overwrite = TRUE)
+        terra::writeRaster(simLand, file.path(outDir, paste0("pdeLayers_", jur, key, ".tif")), filetype = "GTiff", overwrite = TRUE)
       }
 
       if(Par$ecotype == 'northern_mountain'){
 
-        terra::writeRaster(simLand, file.path(outDir, paste0("pdeLayers_", Par$.studyAreaName, "_", key, ".tif")), overwrite = TRUE)
+        terra::writeRaster(simLand, file.path(outDir, paste0("pdeLayers_", Par$.studyAreaName, "_", key, ".tif")), filetype = "GTiff", overwrite = TRUE)
       }
 
       sim <- scheduleEvent(sim, time(sim) + P(sim)$predictionInterval, "caribou_SSUD", "simLayers")
@@ -392,9 +395,11 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
 
       # boreal
       if(Par$ecotype == 'boreal'){
-        makeBorealPDE(mods = sim$iSSAmodels, studyAreaJuris = sim$studyArea_juris,  juris = Par$jurisdiction,
-                      envLayers = sim$simEnv[[key]], normalizePDE = Par$normalizePDE, simulationScale = Par$simulationScale,
-                      isSim = TRUE, key = key, savePath = outDir)
+        ud <- makeBorealPDE(mods = sim$iSSAmodels, studyAreaJuris = sim$studyArea_juris,  juris = Par$jurisdiction,
+                            envLayers = sim$simEnv[[key]], normalizePDE = Par$normalizePDE,
+                            savePath = outDir, key = key)
+        sim$simPde[[key]] <- ud$pde
+        sim$simPdeMap[[key]] <- ud$pdeMap
       }
 
       # northern mountain
@@ -415,8 +420,8 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
           sim$simPdeMap[[key]] <- NULL
         }
 
-        terra::writeRaster(sim$simPde[[key]], file.path(outDir, paste0("pde_", Par$.studyAreaName, '_', key, '.tif')), overwrite = TRUE)
-        terra::writeRaster(sim$simPdeMap[[key]], file.path(outDir, paste0("pdeMap_", Par$.studyAreaName, '_', key, '.tif')), overwrite = TRUE)
+        terra::writeRaster(sim$simPde[[key]], file.path(outDir, paste0("pde_", Par$.studyAreaName, '_', key, '.tif')), filetype = "GTiff", overwrite = TRUE)
+        terra::writeRaster(sim$simPdeMap[[key]], file.path(outDir, paste0("pdeMap_", Par$.studyAreaName, '_', key, '.tif')), filetype = "GTiff", overwrite = TRUE)
 
       }
 
