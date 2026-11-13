@@ -17,13 +17,12 @@ reclassifyCohortData <- function(cohortData, sppEquivCol, sppEquiv = LandR::sppE
   
   #find percent coniferous
   cohortData[, isConifer := speciesCode %in% conifers]
-  Pgs <- cohortData[, .(propB = B/sumB), .(pixelGroup, isConifer)]
-  #sum by conifer/deciduous in each pixelGroup
-  Pgs <- Pgs[, .(propB = sum(propB)), .(pixelGroup, isConifer)]
-  Pgs[isConifer == TRUE & propB >= max(mixedForestCutoffs), ForestType := 210,] #conifer
+  #conifer share of each pixelGroup's biomass (0 with no conifers), one row per pixelGroup
+  Pgs <- cohortData[, .(propB = sum(B[isConifer])/sumB[1]), .(pixelGroup)]
+  Pgs[propB >= max(mixedForestCutoffs), ForestType := 210,] #conifer
   Pgs[propB < max(mixedForestCutoffs) & propB > min(mixedForestCutoffs), ForestType := 230] #mixed
   #whatever is left is broadleaf
-  Pgs <- unique(Pgs[, .(pixelGroup, ForestType)])
+  Pgs <- Pgs[, .(pixelGroup, ForestType)]
   Pgs[is.na(ForestType), ForestType := 220] # deciduous
   #Pgs[, ForestType := as.factor(ForestType)]
   
