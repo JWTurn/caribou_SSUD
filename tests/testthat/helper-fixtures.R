@@ -29,3 +29,10 @@ fixture_fit <- function() {
     data = steps
   )
 }
+
+## The coefficients table of a made-up iSSA model, as hsaCEtool's <model>_fixed.csv gives it, for
+## tests that need no fitted model (and so no broom.mixed).
+fixture_coefs <- function() {
+  data.table::data.table(term = c("(Intercept)", "x_start", "x_end", "x_end:y_end"),
+                         estimate = c(5, 9, 0.5, 0.25))
+}
