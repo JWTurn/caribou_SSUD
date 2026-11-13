@@ -449,15 +449,7 @@ setupBaseline <- function(sim, objects = c("fixedSSUD", "baselineYear", "pde")) 
   if (P(sim)$simulationProcess == "dynamic") {
 
     if ("fixedSSUD" %in% objects && is.null(sim$fixedSSUD)) {
-      # layer names in fixedSSUD = names in modelLand
-      fixedLayers <- if (P(sim)$ecotype == "boreal") {
-        c(prop_veg = "prop_veg", prop_wets = "prop_wets", distpaved = "distpaved",
-          distunpaved = "distunpaved", distpolys = "distpolys", timeSinceHarvest0 = "timeSinceHarvest")
-      } else {
-        c(prop_veg_250 = "prop_veg_250", dist_lf_250 = "dist_lf_250", dist_poly_250 = "dist_poly_250")
-      }
-      sim$fixedSSUD <- terra::rast(lapply(fixedLayers, function(n) sim$modelLand[[n]]))
-      names(sim$fixedSSUD) <- names(fixedLayers)
+      sim$fixedSSUD <- makeFixedSSUD(sim$modelLand, P(sim)$ecotype)
     }
 
     if ("baselineYear" %in% objects && is.null(sim$baselineYear)) {
