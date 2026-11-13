@@ -23,6 +23,19 @@ test_that("make_pde() predicts from a coefficients table", {
   expect_equal(as.vector(terra::values(pde)), u / sum(u))
 })
 
+test_that("make_pde() keeps a capital I in a covariate name, and drops only the I() around a term", {
+  layers <- envlayers()
+  layers$dist_IND <- layers$x
+  coefs <- data.frame(
+    term = c("dist_IND_end", "I(dist_IND_end^2)", "I(log(y_end + 1))"),
+    estimate = c(0.5, -0.1, 0.25)
+  )
+  pde <- make_pde(coefs, layers, studyArea(), normalize = FALSE)
+  x <- 1:4
+  y <- c(0, 1, 0, 1)
+  expect_equal(as.vector(terra::values(pde)), exp(2 * 0.5 * x - 2 * 0.1 * x^2 + 2 * 0.25 * log(y + 1)))
+})
+
 test_that("a fitted model and its coefficients table give the same PDE", {
   set.seed(1)
   steps <- data.frame(x_end = stats::runif(200), y_end = stats::rbinom(200, 1, 0.5))

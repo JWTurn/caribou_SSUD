@@ -90,7 +90,8 @@ make_pde <- function(mod, lsRasters, studyArea, normalize = TRUE) {
   setnames(fixEff, 'term', 'var')
 
   selectionCoefs <- fixEff[var %like% '_end']
-  selectionCoefs[, expr := gsub('_end|I', '', var)]
+  # drop '_end', and the I of an I() wrapper, not a capital I inside a covariate's name
+  selectionCoefs[, expr := gsub('_end', '', gsub('\\bI\\(', '(', var, perl = TRUE))]
   selectionCoefs[, expr := gsub(':', '*', expr)]
 
   numerator <- lapply(
