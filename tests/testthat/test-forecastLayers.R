@@ -112,7 +112,8 @@ test_that("timeSinceLayers() takes the more recent of modelLand's and the simula
   simTs[2] <- 3                       # burned 2032
   simTs[4] <- 8                       # burned 2027
 
-  out <- timeSinceLayers(c("ts_fire_240", "ts_fire_1200"), base, 2035, 2025, 200, simTs)
+  out <- timeSinceLayers(c("ts_fire_240", "ts_fire_1200"), base, 2035, 2025, 200, simTs,
+                         coarse = "recent")
   expect_named(out, c("ts_fire_240", "ts_fire_1200"))
   expect_equal(unlist(out$ts_fire_240[1:5]), c(15, 3, 200, 8, 200), ignore_attr = TRUE)
   ## 1200 m: the most recent fire year of the block's burned cells (2020, 2032, 2027)
@@ -154,7 +155,7 @@ test_that("timeSinceLayers() reads a stand-in no-event year (noEventYear) as no 
   simTs[2] <- 1                       # burned 2026 in the simulation
 
   out <- timeSinceLayers(c("timeSinceFire", "ts_fire_1200"), base, 2027, 2022, 200, simTs,
-                         noEventYear = 1900)
+                         coarse = "recent", noEventYear = 1900)
   ## never-burned cells keep counting from 1900, as the model was fit
   expect_equal(unlist(out$timeSinceFire[1:4]), c(7, 1, 15, 127), ignore_attr = TRUE)
   ## the stand-in is left out of the block: most recent of 2020, 2026, 2012
@@ -197,8 +198,8 @@ test_that("buildForecastLayers() combines coarse fire and harvest layers by thei
   out <- suppressMessages(buildForecastLayers(layers, sources, 2030, ml, fixture_grid(), objs = list(), p = p))
   expect_equal(out$ts_fire_1200[1][[1]], 2030 - 2021)
   expect_equal(out$ts_harv_1200[1][[1]], 2030 - mean(c(2015, 2021)))
-  ## not set: the most recent
-  expect_equal(coarseRule("harvest", list()), "recent")
+  ## not set: the mean
+  expect_equal(coarseRule("harvest", list()), "mean")
 })
 
 test_that("timeSinceBase() finds modelLand's layer of the covariate on the grid", {

@@ -137,7 +137,7 @@ forestLayer <- function(name, nowCells, startCells, modelLand, windowRadius = li
 # out), the most recent (`coarse` "recent") or the mean ("mean"). Then years since = year - event
 # year; a cell with no event gets `tsElse`, or year - noEventYear when that is set
 timeSinceLayers <- function(names, baseLayer, year, baselineYear, tsElse, simTimeSince = NULL,
-                            coarse = "recent", noEventYear = NA) {
+                            coarse = "mean", noEventYear = NA) {
   fun <- switch(coarse, recent = "max", mean = "mean",
                 stop("fireCoarse / harvestCoarse must be 'recent' or 'mean'", call. = FALSE))
 
@@ -273,10 +273,10 @@ buildForecastLayers <- function(layers, sources, year, modelLand, grid, objs, p)
 }
 
 # how a source's ("fire", "harvest") coarser layers combine the grid cells' event years: the
-# fireCoarse / harvestCoarse parameter, "recent" if not set
+# fireCoarse / harvestCoarse parameter, "mean" if not set
 coarseRule <- function(src, p) {
   rule <- p[[paste0(src, "Coarse")]]
-  if (is.null(rule)) "recent" else rule
+  if (is.null(rule)) "mean" else rule
 }
 
 # the stand-in year meaning "no event" in modelLand's time-since layers of a source ("fire",
