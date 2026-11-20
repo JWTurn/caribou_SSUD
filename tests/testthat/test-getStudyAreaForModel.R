@@ -11,15 +11,31 @@ test_that("pdeModelNames() picks the global model, one per region, or both", {
 test_that("pdeModels() takes the chosen models from iSSAmodels, ignoring case, and names them as chosen", {
   models <- list(global = "the global model", NT = "the NT model", BC = "the BC model")
 
-  expect_identical(pdeModels(c("global", "nt"), "boreal", iSSAmodels = models),
+  expect_identical(pdeModels(c("global", "nt"), iSSAmodels = models),
                    list(global = "the global model", nt = "the NT model"))
-  expect_error(pdeModels(c("SK", "NT"), "boreal", iSSAmodels = models), "no model for: SK. Available: global, NT, BC")
+  expect_error(pdeModels(c("SK", "NT"), iSSAmodels = models), "no model for: SK. Available: global, NT, BC")
 })
 
-test_that("pdeModels() gives the northern mountain ecotype its one global model", {
-  expect_identical(pdeModels("global", "northern_mountain", iSSAcoefficients = "the table"),
-                   list(global = "the table"))
-  expect_error(pdeModels("YT", "northern_mountain", iSSAcoefficients = "the table"), "only a global model")
+test_that("pdeModels() takes fitted models and coefficient tables alike, for any model", {
+  tab <- data.table::data.table(term = "x_end", estimate = 1)
+  fit <- structure(list(), class = "glmmTMB")
+  models <- list(global = tab, YT = fit)
+
+  expect_identical(pdeModels(c("global", "YT"), iSSAmodels = models), models)
+  ## one model or table on its own, or a list of one unnamed, is the global model
+  expect_identical(pdeModels("global", iSSAmodels = tab), list(global = tab))
+  expect_identical(pdeModels("global", iSSAmodels = fit), list(global = fit))
+  expect_identical(pdeModels("global", iSSAmodels = list(fit)), list(global = fit))
+  expect_error(pdeModels("YT", iSSAmodels = tab), "no model for: YT. Available: global")
+})
+
+test_that("pdeModels() takes iSSAcoefficients as the global model when iSSAmodels is not supplied", {
+  tab <- data.table::data.table(term = "x_end", estimate = 1)
+
+  expect_identical(pdeModels("global", iSSAcoefficients = tab), list(global = tab))
+  expect_identical(pdeModels("global", iSSAmodels = list(global = "a model"), iSSAcoefficients = tab),
+                   list(global = "a model"))
+  expect_error(pdeModels("global"), "must be a list of models by name")
 })
 
 test_that("getStudyAreaForModel() matches a regional model to its area, ignoring case", {
