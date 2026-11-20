@@ -57,8 +57,9 @@ For a model fit with seasons (terms such as `seasonwinter:prop_forest_240_end`; 
 
 The module needs the model and the landscape the model reads (Table \@ref(tab:moduleInputs-caribou-SSUD)):
 
-- `iSSAcoefficients`, the northern mountain model's fixed-effect coefficients; if not supplied, they are read from `<coefficientsModel>_fixed.csv` in the model's zip file in the Google Drive folder `modelsFolderID`.
-  Boreal models are supplied as `iSSAmodels`.
+- `iSSAmodels`, the models, named `global` and/or by region (e.g. `NT`). Each can be the fitted model (`glmmTMB`) or a table of its fixed-effect coefficients (columns `term` and `estimate`, as in hsaCEtool's `<model>_fixed.csv`), for either ecotype.
+  If not supplied, the NMC global model's table is read from `<coefficientsModel>_fixed.csv` in the model's zip file in the Google Drive folder `modelsFolderID`, and boreal models from `iSSAmodels.RData` in `outputFolderID`.
+  (`iSSAcoefficients`, one table for the global model, still works but is deprecated.)
 - For a model with seasons (NMC), `iSSAseasons`, the days in each season, used to weight the full-year map; read from the model's zip file when it has one.
 - `modelLand`, the landscape layers, named as in the model's terms; a layer the model needs and the list lacks stops the run, naming it.
   For NMC, distances capped for the model (more than 20 km set to 21 km) carry `_adj` in their names (e.g. `dist_paved_240_adj`); the boreal distances are not capped.

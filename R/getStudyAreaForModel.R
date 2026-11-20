@@ -14,16 +14,20 @@ pdeModelNames <- function(simulationScale, jurisdiction) {
     if (simulationScale %in% c("regional", "both")) jurisdiction)
 }
 
-# the chosen models, named as in pdeModelNames(): from iSSAmodels for the boreal ecotype, and the
-# coefficients table for the northern mountain ecotype, which has only a global model for now
-pdeModels <- function(modelNames, ecotype, iSSAmodels = NULL, iSSAcoefficients = NULL) {
+# the chosen models, named as in pdeModelNames(), from `iSSAmodels`: a list of models by name (e.g.
+# global, NT), each a fitted model (glmmTMB) or a table of its fixed-effect coefficients (see
+# coef_tab()). One model or table on its own, or a list of one unnamed, is the global model.
+# `iSSAcoefficients` (one table, the global model) is the older way to supply a table, used when
+# `iSSAmodels` is not supplied
+pdeModels <- function(modelNames, iSSAmodels = NULL, iSSAcoefficients = NULL) {
 
-  if (ecotype == "northern_mountain") {
-    if (!identical(modelNames, "global")) {
-      stop("The northern mountain ecotype has only a global model for now: use simulationScale = 'global'")
-    }
-    return(list(global = iSSAcoefficients))
+  if (is.null(iSSAmodels) && !is.null(iSSAcoefficients)) iSSAmodels <- iSSAcoefficients
+  if (is.object(iSSAmodels)) iSSAmodels <- list(global = iSSAmodels)  # a fitted model or a table
+  if (!is.list(iSSAmodels) || !length(iSSAmodels)) {
+    stop("iSSAmodels must be a list of models by name, e.g. list(global = <fitted model or coefficient",
+         " table>)", call. = FALSE)
   }
+  if (length(iSSAmodels) == 1L && is.null(names(iSSAmodels))) names(iSSAmodels) <- "global"
 
   found <- match(toupper(modelNames), toupper(names(iSSAmodels)))
 
