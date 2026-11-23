@@ -1,6 +1,6 @@
 caribou_SSUD Manual
 ================
-Version 0.0.1.9000, last updated: 2026-11-20
+Version 0.0.1.9000, last updated: 2026-11-23
 
 - [caribou_SSUD Module](#caribou_ssud-module)
   - [Module Overview](#module-overview)
@@ -174,8 +174,10 @@ made:
   stand-in year instead: the boreal NWT one counts them from 1900, so
   use `list(fire = 1900, harvest = 1900)`), and `fireCoarse` and
   `harvestCoarse` (for layers coarser than the grid, such as NMC’s 1200
-  m layers: whether they take the most recent or the mean fire or
-  harvest year of their cells);
+  m layers: whether they take the mean, the default, or the most recent
+  fire or harvest year of their cells; use the rule the model was fit
+  with: the mean for the V2 NMC models such as `fullV2_to2020`, the most
+  recent for the earlier ones);
 - distances (NMC): `disturbanceClasses` (which
   `anthroDisturbance_Generator` classes each distance is measured to;
   set by default for NMC in Yukon, none for boreal), `distanceCellSize`
@@ -189,8 +191,8 @@ made:
 | noEventYear | list | NA, NA | NA | NA | How modelLand’s time-since layers store cells with no fire (or harvest), by source: NA = such cells are NA (or ts_else or more), and forecasts give them ts_else; a year = they hold the years since that stand-in year (e.g. 1900: 122 with baselineYear 2022), and forecasts give them the years since it (year - noEventYear), as the model was fit. Either way they are left out of coarser layers’ fire years. E.g. the boreal NWT modelLand (baselineYear 2022): list(fire = 1900, harvest = 1900). | TRUE |
 | dynamicLayers | list |  | NA | NA | Dynamic mode: which of the layers the models read are forecast, and from what: a named list, source = a regular expression matched against layer names. Sources: ‘forest’ (LandR’s cohortData and pixelGroupMap), ‘fire’ (scfm’s timeSinceFire), ‘harvest’ (no forecaster yet: the layer only ages) and ‘disturbance’ (distances to anthroDisturbance_Generator’s features, see disturbanceClasses). A layer that matches no pattern stays as in modelLand (e.g. vegetation). NULL = the ecotype’s default: northern mountain list(forest = ‘^prop_forest\_’, fire = ‘^ts_fire\_’, harvest = ‘^ts_harv(est)?*’, disturbance = ’^dist*’); boreal list(forest = ‘^prop\_(needleleaf\|mixedforest)$', fire = '^timeSinceFire$’, harvest = ‘^timeSinceHarvest\$’, disturbance = ‘^dist’). | TRUE |
 | windowRadius | list | 500 | NA | NA | Dynamic mode: radius (m) of the circle forest shares are averaged in, by layer resolution (m), as hsaCEtool’s `window_m`: list(‘240’ = 500) = a 240 m layer (e.g. prop_forest_240) is the mean of the 240 m cells within 500 m. A resolution not listed gets no circle (e.g. prop_forest_1200 is the mean of the 240 m cells in each 1200 m block). Fire layers get no circle. | TRUE |
-| fireCoarse | character | recent | NA | NA | Dynamic mode: how a fire layer coarser than the grid (e.g. ts_fire_1200 on a 240 m grid) is built from the grid cells’ fire years (unburned cells left out): ‘recent’ = the most recent fire in the block, as modelLand’s layers and the current northern mountain models (full_to2020) were made; ‘mean’ = the mean fire year, as hsaCEtool will make them. Use the rule the model was fit with. TODO: default to ‘mean’ once the models are refit. | TRUE |
-| harvestCoarse | character | recent | NA | NA | Dynamic mode: as fireCoarse, for harvest layers coarser than the grid (e.g. ts_harv_1200): ‘recent’ = the most recent harvest in the block; ‘mean’ = the mean harvest year (unharvested cells left out). Use the rule the model was fit with. | TRUE |
+| fireCoarse | character | mean | NA | NA | Dynamic mode: how a fire layer coarser than the grid (e.g. ts_fire_1200 on a 240 m grid) is built from the grid cells’ fire years (unburned cells left out): ‘mean’ = the mean fire year, as hsaCEtool makes them for the V2 northern mountain models (e.g. fullV2_to2020) and their modelLand; ‘recent’ = the most recent fire in the block, as for the earlier models (e.g. full_to2020). Use the rule the model was fit with. | TRUE |
+| harvestCoarse | character | mean | NA | NA | Dynamic mode: as fireCoarse, for harvest layers coarser than the grid (e.g. ts_harv_1200): ‘mean’ = the mean harvest year (unharvested cells left out); ‘recent’ = the most recent harvest in the block. Use the rule the model was fit with. | TRUE |
 | disturbanceClasses | list |  | NA | NA | Dynamic mode: which of anthroDisturbance_Generator’s classes each distance covariate (the layer name without resolution or `_adj`, e.g. dist_paved) measures to, as ‘sector/class’ in disturbanceList; several classes are combined. A forecast distance is the smaller of modelLand’s and the distance to the class’s features that year (features are only ever added), so features outside the study area or in no Generator class still count. A covariate not listed stays as in modelLand. NULL = the ecotype’s default: northern mountain list(dist_paved = ‘roads/paved’, dist_unpaved = ‘roads/unpaved’, dist_placer = ‘mining/placer’, dist_quartz = ‘mining/quartz’, dist_othermines = ‘mining/otherMines’) (dist_lfother and dist_otherpoly have no Generator class); boreal none. | TRUE |
 | distanceCellSize | numeric | 30 | NA | NA | Dynamic mode: cell size (m) distances are measured on, as hsaCEtool does: the distance from each cell of this size to the nearest one a feature touches, then the mean over each grid cell (e.g. a 240 m cell’s 64 30 m cells). Must divide the grid’s cell size evenly; the grid’s cell size = distances from cell centres (faster, but not as the model’s layers were made). | TRUE |
 | distanceCap | list | 20, 21 | NA | NA | Dynamic mode: how capped distances (layers named with `_adj`, e.g. dist_paved_240_adj) are capped, as hsaCEtool’s `distance_cap`: more than beyond_km km gives set_to_km km. | TRUE |
@@ -220,7 +222,7 @@ made:
 | .seed | list |  | NA | NA | Named list of seeds to use for each event (names). | TRUE |
 | .useCache | logical | FALSE | NA | NA | Should caching of events or module be used? | TRUE |
 | outputFolderID | character | <https://>…. | NA | NA | Google Drive folder ID for workflow outputs | TRUE |
-| coefficientsModel | character | full_to2020 | NA | NA | Name of the northern mountain iSSA model whose coefficients are read | TRUE |
+| coefficientsModel | character | bioseaso…. | NA | NA | Name of the northern mountain iSSA model whose coefficients are read | TRUE |
 | modelsFolderID | character | <https://>…. | NA | NA | Google Drive folder holding the northern mountain model zips | TRUE |
 
 <span id="tab:moduleParams-caribou-SSUD"></span>Table 2: List of
