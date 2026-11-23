@@ -41,6 +41,43 @@ layerSources <- function(layers, dynamicLayers) {
   setNames(apply(hits, 1, function(h) if (any(h)) names(dynamicLayers)[h] else NA_character_), layers)
 }
 
+# the moving-window radius (m) for each layer, named by layer; NA = no window. `movingWindow` is a
+# table with columns `layers` (a pattern on layer names) and `radius` (m); a radius of NA takes
+# `buffer` (as prepTracks makes it). Stops for a layer that matches more than one row, a row with no
+# radius and no `buffer`, or a radius that differs from a supplied `buffer`, so the window cannot
+# differ from the one other modules in the workflow use
+windowRadii <- function(layers, movingWindow, buffer = NULL) {
+  out <- setNames(rep(NA_real_, length(layers)), layers)
+  if (is.null(movingWindow) || !NROW(movingWindow)) return(out)
+  if (!is.data.frame(movingWindow) || !all(c("layers", "radius") %in% names(movingWindow)))
+    stop("movingWindow must be a data.frame with columns `layers` (a pattern on layer names) and",
+         " `radius` (m), e.g. data.frame(layers = \"^prop_.*_240$\", radius = 500)", call. = FALSE)
+
+  radius <- as.numeric(movingWindow$radius)
+  if (!is.null(buffer)) {
+    if (length(buffer) != 1 || is.na(buffer))
+      stop("buffer must be one number (m)", call. = FALSE)
+    differ <- !is.na(radius) & radius != buffer
+    if (any(differ))
+      stop("movingWindow gives a radius of ", paste(unique(radius[differ]), collapse = ", "),
+           " m, but buffer (from the workflow, e.g. prepTracks) is ", buffer, " m. Set the radius to",
+           " NA to use buffer, so every module uses the same window.", call. = FALSE)
+    radius[is.na(radius)] <- buffer
+  } else if (anyNA(radius)) {
+    stop("movingWindow has a row with no radius (NA = use buffer), but buffer is not supplied",
+         call. = FALSE)
+  }
+
+  hits <- vapply(movingWindow$layers, function(p) grepl(p, layers), logical(length(layers)))
+  hits <- matrix(hits, nrow = length(layers), dimnames = list(layers, NULL))
+  twice <- layers[rowSums(hits) > 1]
+  if (length(twice))
+    stop("These layers match more than one movingWindow row: ", paste(twice, collapse = ", "),
+         call. = FALSE)
+  for (i in seq_len(ncol(hits))) out[hits[, i]] <- radius[i]
+  out
+}
+
 # a grid-cell map at the resolution `res` (m): unchanged if `res` is NA or the grid's own; otherwise
 # `fun` (na.rm; default the mean) of the grid cells in each res x res block, copied back onto every
 # cell of the block. Blocks start at the coordinate origin, as modelLand's coarse layers do (hsaCEtool), so the
@@ -100,15 +137,14 @@ landRForestCells <- function(cohortData, pixelGroupMap, types, minBiomass = 0,
 }
 
 # the forecast of one forest layer (e.g. prop_forest_240) from 0/1 LandR forest cell maps now and at
-# the start of the simulation: at its resolution, then averaged in a circle if windowRadius lists the
-# resolution. "change": modelLand's layer + (LandR now - LandR at the start), kept within 0-1;
+# the start of the simulation: at its resolution, then averaged in a circle of `radius` m if given (see
+# windowRadii()). "change": modelLand's layer + (LandR now - LandR at the start), kept within 0-1;
 # "LandR": LandR's value alone
-forestLayer <- function(name, nowCells, startCells, modelLand, windowRadius = list(), mode = "change") {
+forestLayer <- function(name, nowCells, startCells, modelLand, radius = NA, mode = "change") {
   res <- parseLayerName(name)$res
   share <- function(cells) {
     out <- toResolution(cells, res)
-    r <- windowRadius[[as.character(res)]]
-    if (!is.null(r)) out <- circleMean(out, r)
+    if (!is.na(radius)) out <- circleMean(out, radius)
     out
   }
 
@@ -176,7 +212,7 @@ timeSinceBase <- function(stem, modelLand, cellSize) {
 # the forecast landscape for `year`: every layer in `layers`, by its source (layerSources()). Static
 # layers (no source, or a source whose objects the sim lacks) come from modelLand; `objs` holds the
 # sim's objects (cohortData, pixelGroupMap, sppEquiv, timeSinceFire, forestBaseline,
-# disturbanceList); `p` the module's parameters. Returns a SpatRaster with one layer per name
+# disturbanceList, buffer); `p` the module's parameters. Returns a SpatRaster with one layer per name
 buildForecastLayers <- function(layers, sources, year, modelLand, grid, objs, p) {
 
   info <- parseLayerName(layers)
@@ -184,6 +220,14 @@ buildForecastLayers <- function(layers, sources, year, modelLand, grid, objs, p)
   out <- list()
 
   static <- layers[is.na(sources)]
+
+  # moving windows: only forest forecasts take one so far (fixed layers come from modelLand as built)
+  radii <- windowRadii(layers, p$movingWindow, objs$buffer)
+  unsupported <- layers[!is.na(radii) & !is.na(sources) & !sources %in% "forest"]
+  if (length(unsupported))
+    stop("Moving windows are not supported yet for ", paste(unique(sources[unsupported]), collapse = ", "),
+         " layers: ", paste(unsupported, collapse = ", "), ". Change movingWindow so it matches only",
+         " forest layers.", call. = FALSE)
 
   # forest, from LandR
   forest <- layers[sources %in% "forest"]
@@ -201,7 +245,7 @@ buildForecastLayers <- function(layers, sources, year, modelLand, grid, objs, p)
         startCells <- objs$forestBaseline[[stem]]
         if (p$forestForecast == "change" && is.null(startCells))
           stop("forestBaseline lacks ", stem, ", which forestForecast 'change' needs", call. = FALSE)
-        out[[n]] <- forestLayer(n, nowCells, startCells, modelLand, p$windowRadius, p$forestForecast)
+        out[[n]] <- forestLayer(n, nowCells, startCells, modelLand, radii[[n]], p$forestForecast)
       }
     }
   }
