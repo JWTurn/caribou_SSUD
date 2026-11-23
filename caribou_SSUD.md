@@ -132,6 +132,7 @@ harvest layers only age, and distances stay as in `modelLand`.
 | cohortData | data.table | `data.table` with cohort-level information on age and biomass, by `pixelGroup` and ecolocation (i.e., `ecoregionGroup`). If supplied, it must have the following columns: `pixelGroup` (integer), `ecoregionGroup` (factor), `speciesCode` (factor), `B` (integer in $g/m^2$), `age` (integer in years) | NA |
 | pixelGroupMap | SpatRaster | A raster layer with `pixelGroup` IDs per pixel. Pixels are grouped based on identical `ecoregionGroup`, `speciesCode`, `age` and `B` composition, even if the user supplies other initial groupings (e.g., via the `Biomass_borealDataPrep` module. | NA |
 | timeSinceFire | SpatRaster | Dynamic mode: years since each cell last burned in the simulation, NA where it has not burned (as scfmSpread keeps it), on the forecast grid. Fire layers take a cell’s fire year from it where that is more recent than modelLand’s and in baselineYear or later, so values it started with (e.g. stand age) are not read as fires. If absent, fire layers only age. | NA |
+| buffer | numeric | Dynamic mode: the moving-window radius (m) that other modules in the workflow use (e.g. prepTracks’ median step length, passed to prepLandscape). movingWindow rows with radius NA take it, and a row with another radius stops, so modules cannot use different windows. Optional. | NA |
 | disturbanceList | list | Dynamic mode: anthroDisturbance_Generator’s disturbances, a list by sector of lists by class, each holding all of that class’s features (existing and simulated) as a SpatVector (or sf). Distance layers are measured to the classes in disturbanceClasses. If absent, distance layers stay as in modelLand. | NA |
 | sppEquiv | data.table | Dynamic mode: LandR’s species-equivalence table, with a `Type` column (Conifer/Deciduous) and the species codes in column sppEquivCol. If absent, LandR::sppEquivalencies_CA. | NA |
 | forestBaseline | list | Dynamic mode, forestForecast ‘change’: LandR’s forest at the start of the simulation, a named list of 0/1 SpatRasters on the forecast grid, one per forest covariate (e.g. prop_forest). If not supplied, made in init from cohortData and pixelGroupMap. | NA |
@@ -167,11 +168,15 @@ made:
   simulated forest alone), `forestTypes` (the LandR forest types each
   layer counts: NMC `prop_forest` counts all forest; boreal
   `prop_needleleaf` counts conifer stands and `prop_mixedforest`
-  deciduous and mixed ones), `forestMinBiomass` and `windowRadius` (the
-  circle NMC’s 240 m layers are averaged over, 500 m; layers with no
-  resolution in their name, such as the boreal ones, are not yet
-  averaged in a circle (the boreal models were fit on 720 m windows; to
-  be added));
+  deciduous and mixed ones) and `forestMinBiomass`;
+- moving windows: `movingWindow` (the circles forecast layers are
+  averaged in, as the model’s layers were built: one row per window, a
+  pattern on layer names and a radius in m; by default NMC’s 240 m land
+  cover in 500 m; for the boreal NWT `modelLand` use
+  `data.frame(layers = "^prop_(needleleaf|mixedforest)$", radius = 720)`).
+  A radius of `NA` takes the input `buffer`, the radius other modules in
+  the workflow use (e.g. prepTracks); a different radius stops, so the
+  modules cannot disagree. Only forest layers take a window so far;
 - time since fire and harvest: `ts_else` (the value given to cells that
   never burned or were never harvested; 200 for the NMC models),
   `noEventYear` (for a `modelLand` that counts such cells from a
@@ -193,8 +198,8 @@ made:
 | ts_else | integer | 200 | NA | NA | Years since disturbance given to cells with no recorded disturbance (e.g. never burned) in the time-since-fire and time-since-harvest layers. Use the value the model was fit with (hsaCEtool’s `ts_nodata`; 200 for the northern mountain models). | TRUE |
 | baselineYear | integer | 2025 | NA | NA | The year modelLand describes: its time-since layers (e.g. ts_fire_240) count years back from it. Forecasts count from it too, and the simulation should start in it (LandR’s stands at the start are compared with modelLand’s). 2025 for the northern mountain modelLand; 2022 for the boreal NWT one. | TRUE |
 | noEventYear | list | NA, NA | NA | NA | How modelLand’s time-since layers store cells with no fire (or harvest), by source: NA = such cells are NA (or ts_else or more), and forecasts give them ts_else; a year = they hold the years since that stand-in year (e.g. 1900: 122 with baselineYear 2022), and forecasts give them the years since it (year - noEventYear), as the model was fit. Either way they are left out of coarser layers’ fire years. E.g. the boreal NWT modelLand (baselineYear 2022): list(fire = 1900, harvest = 1900). | TRUE |
-| dynamicLayers | list |  | NA | NA | Dynamic mode: which of the layers the models read are forecast, and from what: a named list, source = a regular expression matched against layer names. Sources: ‘forest’ (LandR’s cohortData and pixelGroupMap), ‘fire’ (scfm’s timeSinceFire), ‘harvest’ (no forecaster yet: the layer only ages) and ‘disturbance’ (distances to anthroDisturbance_Generator’s features, see disturbanceClasses). A layer that matches no pattern stays as in modelLand (e.g. vegetation). NULL = the ecotype’s default: northern mountain list(forest = ‘^prop_forest\_’, fire = ‘^ts_fire\_’, harvest = ‘^ts_harv(est)?*’, disturbance = ’^dist*’); boreal list(forest = ‘^prop\_(needleleaf\|mixedforest)$', fire = '^timeSinceFire$’, harvest = ‘^timeSinceHarvest\$’, disturbance = ‘^dist’). | TRUE |
-| windowRadius | list | 500 | NA | NA | Dynamic mode: radius (m) of the circle forest shares are averaged in, by layer resolution (m), as hsaCEtool’s `window_m`: list(‘240’ = 500) = a 240 m layer (e.g. prop_forest_240) is the mean of the 240 m cells within 500 m. A resolution not listed gets no circle (e.g. prop_forest_1200 is the mean of the 240 m cells in each 1200 m block). Fire layers get no circle. | TRUE |
+| dynamicLayers | list |  | NA | NA | Dynamic mode: which of the layers the models read are forecast, and from what: a named list, source = a regular expression matched against layer names. Sources: ‘forest’ (LandR’s cohortData and pixelGroupMap), ‘fire’ (scfm’s timeSinceFire), ‘harvest’ (no forecaster yet: the layer only ages) and ‘disturbance’ (distances to anthroDisturbance_Generator’s features, see disturbanceClasses). A layer that matches no pattern stays as in modelLand (e.g. vegetation). NULL = the ecotype’s default: northern mountain list(forest = ‘^prop_forest\_’, fire = ‘^ts_fire\_’, harvest = ‘^ts_harv(est)?*’, disturbance = ’^dist*’); boreal list(forest = ‘^prop\_(needleleaf\|mixedforest)$', fire = '^timeSinceFire$’, harvest = ‘^timeSinceHarvest$', disturbance = '^dist').          |TRUE     |
+|movingWindow       |data.frame   |^prop_.*.... |NA  |NA  |Dynamic mode: the circular moving windows forecast layers are averaged in, as the model's layers were built: a table with one row per window, columns `layers` (a pattern on layer names) and `radius` (m). The default matches hsaCEtool's `window_m` for the NMC models: 240 m land cover (e.g. prop_forest_240) is the mean of the 240 m cells within 500 m. Boreal NWT: data.frame(layers = '^prop_(needleleaf&#124;mixedforest)$’, radius = 720). A radius of NA takes `buffer`; a radius that differs from a supplied `buffer` stops. Layers that match no row get no window (e.g. prop_forest_1200 is the mean of the 240 m cells in each 1200 m block). Only forest layers can take a window so far. NULL = none. | TRUE |
 | fireCoarse | character | mean | NA | NA | Dynamic mode: how a fire layer coarser than the grid (e.g. ts_fire_1200 on a 240 m grid) is built from the grid cells’ fire years (unburned cells left out): ‘mean’ = the mean fire year, as hsaCEtool makes them for the V2 northern mountain models (e.g. fullV2_to2020) and their modelLand; ‘recent’ = the most recent fire in the block, as for the earlier models (e.g. full_to2020). Use the rule the model was fit with. | TRUE |
 | harvestCoarse | character | mean | NA | NA | Dynamic mode: as fireCoarse, for harvest layers coarser than the grid (e.g. ts_harv_1200): ‘mean’ = the mean harvest year (unharvested cells left out); ‘recent’ = the most recent harvest in the block. Use the rule the model was fit with. | TRUE |
 | disturbanceClasses | list |  | NA | NA | Dynamic mode: which of anthroDisturbance_Generator’s classes each distance covariate (the layer name without resolution or `_adj`, e.g. dist_paved) measures to, as ‘sector/class’ in disturbanceList; several classes are combined. A forecast distance is the smaller of modelLand’s and the distance to the class’s features that year (features are only ever added), so features outside the study area or in no Generator class still count. A covariate not listed stays as in modelLand. NULL = the ecotype’s default: northern mountain list(dist_paved = ‘roads/paved’, dist_unpaved = ‘roads/unpaved’, dist_placer = ‘mining/placer’, dist_quartz = ‘mining/quartz’, dist_othermines = ‘mining/otherMines’) (dist_lfother and dist_otherpoly have no Generator class); boreal none. | TRUE |
@@ -242,8 +247,8 @@ made:
 - `simLayers` (dynamic mode): rebuilds the layers that change, on top of
   the layers that do not (`fixedSSUD`), and writes the stack:
   - forest cover: the simulated cohorts classed into forest types, as a
-    share of each cell at the layer’s resolution (and, for NMC’s 240 m
-    layers, of a circle around it, `windowRadius`);
+    share of each cell at the layer’s resolution (and of a circle around
+    it, for layers `movingWindow` picks);
   - time since fire: the most recent of `modelLand`’s fire and the
     simulation’s, in years; cells that never burned get `ts_else` (NMC)
     or keep counting from `noEventYear` (boreal NWT);
