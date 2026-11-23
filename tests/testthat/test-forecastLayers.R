@@ -94,13 +94,43 @@ test_that("forestLayer() adds LandR's change to modelLand's layer, kept within 0
   expect_named(out, "prop_forest_1200")
 
   ## 240 m, in a 500 m circle: kept at 0 or more
-  out <- forestLayer("prop_forest_240", now, start, ml, windowRadius = list("240" = 500))
+  out <- forestLayer("prop_forest_240", now, start, ml, radius = 500)
   expect_equal(out[1][[1]], 0)
   expect_equal(out[100][[1]], 0.1)
 
   ## LandR alone
   out <- forestLayer("prop_forest_1200", now, start, ml, mode = "LandR")
   expect_equal(out[1][[1]], 20 / 25)
+
+  ## no resolution in the name (boreal): on the grid, in the circle given
+  ## (cell 6 is next to the lost cells 4 and 5: the circle reaches them, a single cell does not)
+  ml$prop_needleleaf <- fixture_grid(0.1)
+  out <- forestLayer("prop_needleleaf", now, start, ml, radius = 500)
+  expect_lt(out[6][[1]], 0.1)
+  expect_equal(out[100][[1]], 0.1)
+  out <- forestLayer("prop_needleleaf", now, start, ml)
+  expect_equal(out[6][[1]], 0.1)
+})
+
+test_that("windowRadii() gives each layer its movingWindow radius, or NA", {
+  layers <- c("prop_forest_240", "prop_forest_1200", "prop_needleleaf", "ts_fire_240")
+  mw <- data.frame(layers = c("^prop_.*_240$", "^prop_needleleaf$"), radius = c(500, 720))
+  expect_equal(windowRadii(layers, mw), c(prop_forest_240 = 500, prop_forest_1200 = NA,
+                                          prop_needleleaf = 720, ts_fire_240 = NA))
+  expect_true(all(is.na(windowRadii(layers, NULL))))
+  expect_error(windowRadii(layers, list("240" = 500)), "data.frame with columns")
+  expect_error(windowRadii(layers, data.frame(layers = c("^prop_", "_240$"), radius = 500)),
+               "more than one movingWindow row: prop_forest_240")
+})
+
+test_that("windowRadii() takes buffer for a radius of NA, and stops when the two differ", {
+  layers <- c("prop_needleleaf", "prop_mixedforest")
+  mw <- data.frame(layers = "^prop_(needleleaf|mixedforest)$", radius = NA)
+  expect_equal(unname(windowRadii(layers, mw, buffer = 720)), c(720, 720))
+  expect_error(windowRadii(layers, mw), "no radius .* buffer is not supplied")
+  expect_equal(unname(windowRadii(layers, transform(mw, radius = 720), buffer = 720)), c(720, 720))
+  expect_error(windowRadii(layers, transform(mw, radius = 500), buffer = 720),
+               "radius of 500 m, but buffer .* is 720 m")
 })
 
 test_that("timeSinceLayers() takes the more recent of modelLand's and the simulation's events", {
@@ -215,7 +245,7 @@ test_that("buildForecastLayers() builds each layer from its source, and the rest
              prop_veg_240 = fixture_grid(0.3), dist_paved_240_adj = fixture_grid(1000))
   layers <- c("prop_veg_240", "prop_forest_240", "ts_fire_240", "dist_paved_240_adj")
   sources <- layerSources(layers, defaultDynamicLayers("northern_mountain"))
-  p <- list(baselineYear = 2025, ts_else = 200, windowRadius = list(), forestForecast = "change",
+  p <- list(baselineYear = 2025, ts_else = 200, movingWindow = NULL, forestForecast = "change",
             forestTypes = list(prop_forest = c("conifer", "deciduous", "mixed")),
             forestMinBiomass = 0, sppEquivCol = "LandR")
 
@@ -240,6 +270,11 @@ test_that("buildForecastLayers() builds each layer from its source, and the rest
   expect_equal(out$ts_fire_240[1:3][[1]], c(200, 4, 200))
   expect_equal(out$prop_veg_240[1][[1]], 0.3)
   expect_equal(out$dist_paved_240_adj[1][[1]], 1000)
+
+  ## a moving window on a fire layer is not supported yet; one on a fixed layer is left alone
+  p$movingWindow <- data.frame(layers = "_240", radius = 500)
+  expect_error(buildForecastLayers(layers, sources, 2030, ml, g, objs = list(), p = p),
+               "not supported yet for fire, disturbance layers: ts_fire_240")
 })
 
 test_that("buildForecastLayers() keeps forest layers as in modelLand and ages fire without the sim's objects", {

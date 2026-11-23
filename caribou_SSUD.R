@@ -48,12 +48,17 @@ defineModule(sim, list(
                            " '^ts_fire_', harvest = '^ts_harv(est)?_', disturbance = '^dist_'); boreal",
                            " list(forest = '^prop_(needleleaf|mixedforest)$', fire = '^timeSinceFire$',",
                            " harvest = '^timeSinceHarvest$', disturbance = '^dist').")),
-    defineParameter("windowRadius", "list", list("240" = 500), NA, NA,
-                    paste0("Dynamic mode: radius (m) of the circle forest shares are averaged in, by",
-                           " layer resolution (m), as hsaCEtool's `window_m`: list('240' = 500) = a",
-                           " 240 m layer (e.g. prop_forest_240) is the mean of the 240 m cells within",
-                           " 500 m. A resolution not listed gets no circle (e.g. prop_forest_1200 is the",
-                           " mean of the 240 m cells in each 1200 m block). Fire layers get no circle.")),
+    defineParameter("movingWindow", "data.frame", data.frame(layers = "^prop_.*_240$", radius = 500), NA, NA,
+                    paste0("Dynamic mode: the circular moving windows forecast layers are averaged in,",
+                           " as the model's layers were built: a table with one row per window, columns",
+                           " `layers` (a pattern on layer names) and `radius` (m). The default matches",
+                           " hsaCEtool's `window_m` for the NMC models: 240 m land cover (e.g.",
+                           " prop_forest_240) is the mean of the 240 m cells within 500 m. Boreal NWT:",
+                           " data.frame(layers = '^prop_(needleleaf|mixedforest)$', radius = 720). A",
+                           " radius of NA takes `buffer`; a radius that differs from a supplied `buffer`",
+                           " stops. Layers that match no row get no window (e.g. prop_forest_1200 is the",
+                           " mean of the 240 m cells in each 1200 m block). Only forest layers can take",
+                           " a window so far. NULL = none.")),
     defineParameter("fireCoarse", "character", "mean", NA, NA,
                     paste0("Dynamic mode: how a fire layer coarser than the grid (e.g. ts_fire_1200 on",
                            " a 240 m grid) is built from the grid cells' fire years (unburned cells left",
@@ -223,6 +228,11 @@ defineModule(sim, list(
                               "layers take a cell's fire year from it where that is more recent than",
                               "modelLand's and in baselineYear or later, so values it started with (e.g.",
                               "stand age) are not read as fires. If absent, fire layers only age.")),
+    expectsInput(objectName = "buffer", objectClass = "numeric",
+                 desc = paste("Dynamic mode: the moving-window radius (m) that other modules in the",
+                              "workflow use (e.g. prepTracks' median step length, passed to",
+                              "prepLandscape). movingWindow rows with radius NA take it, and a row with",
+                              "another radius stops, so modules cannot use different windows. Optional.")),
     expectsInput(objectName = "disturbanceList", objectClass = "list",
                  desc = paste("Dynamic mode: anthroDisturbance_Generator's disturbances, a list by sector",
                               "of lists by class, each holding all of that class's features (existing and",
@@ -319,6 +329,13 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
         # the forecast grid; stops if modelLand is not on it
         grid <- ssudGrid(sim$modelLand, sim$rasterToMatch)
 
+        # moving windows: stops early for a radius that differs from the workflow's buffer
+        radii <- windowRadii(names(forecastSources(sim)), P(sim)$movingWindow, sim$buffer)
+        if (!is.null(sim$buffer) && all(is.na(radii)))
+          warning("buffer (", sim$buffer, " m) is supplied, but no layer the models read matches a",
+                  " movingWindow row, so no forecast layer is averaged in a window. Check movingWindow's",
+                  " `layers` patterns.", call. = FALSE)
+
         # LandR's forest at the start, which forest layers' change is measured from
         forestStems <- forecastForestStems(sim)
         if (P(sim)$forestForecast == "change" && length(forestStems) && is.null(sim$forestBaseline) &&
@@ -366,7 +383,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
         layers = names(sources), sources = sources, year = thisYear, modelLand = land, grid = grid,
         objs = list(cohortData = sim$cohortData, pixelGroupMap = sim$pixelGroupMap, sppEquiv = sim$sppEquiv,
                     timeSinceFire = sim$timeSinceFire, forestBaseline = sim$forestBaseline,
-                    disturbanceList = sim$disturbanceList),
+                    disturbanceList = sim$disturbanceList, buffer = sim$buffer),
         p = P(sim)
       )
 
