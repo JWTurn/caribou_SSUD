@@ -36,37 +36,41 @@ It turns the model's fixed-effect coefficients into a steady-state utilization d
 The result is a probability density of use (PDE) for each model, normalized to sum to 1 over the area it is predicted for, and a binned map of it (`pdeMap`) that compares the cells within that area.
 
 The module has one code path for any caribou model: what differs between projects (the model, the landscape, layer names, defaults) is supplied as data or parameters.
-It is used for northern mountain caribou (NMC; Yukon), whose models are fit with [`hsaCEtool`](https://github.com/JWTurn/hsaCEtool), and boreal caribou (NWT), whose `glmmTMB` models are fit one per jurisdiction.
+The defaults are those of the northern mountain caribou (NMC) models fit with [`hsaCEtool`](https://github.com/JWTurn/hsaCEtool); a model made another way (e.g. a boreal caribou model fit within SpaDES) is mapped by setting the parameters to match how its model and layers were made (see "Matching a model" below).
 The `ecotype` parameter is no longer used (it is ignored, with a message).
 With `simulationScale` it maps the global model, one model per region, or both.
 
 In static mode (`simulationProcess = "static"`, the default) it maps the baseline landscape only.
 In dynamic mode it also rebuilds the landscape layers that change during a simulation every `predictionInterval` years from `predictStartYear`, and maps habitat use on each.
-Each layer is matched by its name to what forecasts it (`dynamicLayers`):
+Each layer is matched by its name to what forecasts it (`dynamicLayers`), so layers should be named by one rule:
 
-- forest cover (NMC: `prop_forest_240`, `prop_forest_1200`; boreal: `prop_needleleaf`, `prop_mixedforest`), from the simulated tree cohorts (LandR);
-- time since fire (NMC: `ts_fire_240`, `ts_fire_1200`; boreal: `timeSinceFire`), from the simulated fires (e.g. `scfm`);
-- time since harvest (NMC: `ts_harv_240`; boreal: `timeSinceHarvest`), which only ages for now, as no module is integrated to simulate harvest yet;
-- distance to human disturbance (NMC: e.g. `dist_paved_240`; boreal: e.g. `distpaved`), from the roads and mines `anthroDisturbance_Generator` adds. This is only set up for NMC in Yukon at this time; boreal distances stay as in `modelLand`.
+| Layer | Name | Forecast from |
+|:--|:--|:--|
+| forest cover | `prop_<type>_<res>`, e.g. `prop_forest_240` | the simulated tree cohorts (LandR) |
+| time since fire | `ts_fire_<res>` | the simulated fires (e.g. `scfm`) |
+| time since harvest | `ts_harv_<res>` | nothing yet: it only ages, as no module simulates harvest yet |
+| distance to a feature | `dist_<feature>_<res>`, with `_adj` when capped, e.g. `dist_paved_240_adj` | the roads and mines `anthroDisturbance_Generator` adds, for the classes set in `disturbanceClasses` |
+| amount of disturbance (not a distance) | starts with `disturb`, e.g. `disturb_prop_240` | not forecast |
 
-Every other layer (e.g. NMC's land cover, boreal's `prop_veg` and `prop_wets`) stays as in `modelLand`.
-If part of the model, layers keep the resolution in their names: a coarser layer (e.g. NMC's 1200 m layers on a 240 m grid) is built from the grid's cells, as the model's layers were.
-A layer with no resolution in its name (e.g. the boreal layers) is on the simulation's grid.
+`<res>` is the layer's resolution in m.
+Every other layer (e.g. land cover other than forest) stays as in `modelLand`.
+A layer coarser than the simulation's grid (e.g. a 1200 m layer on a 240 m grid) is built from the grid's cells, as the model's layers were.
+The default patterns also match some older names without a resolution (e.g. `prop_needleleaf`, `timeSinceFire`, `distpaved`); such a layer is on the simulation's grid.
 
-For a model fit with seasons (terms such as `seasonwinter:prop_forest_240_end`; currently NMC only), the module makes a map for each season (`seasonMaps`) and a full-year map that combines them, weighted by season length or as chosen (`fullYear`, `seasonWeights`).
+For a model fit with seasons (terms such as `seasonwinter:prop_forest_240_end`), the module makes a map for each season (`seasonMaps`) and a full-year map that combines them, weighted by season length or as chosen (`fullYear`, `seasonWeights`).
 
 ### Module inputs and parameters
 
 The module needs the model and the landscape the model reads (Table \@ref(tab:moduleInputs-caribou-SSUD)):
 
 - `iSSAmodels`, the models, named `global` and/or by region (e.g. `NT`). Each can be the fitted model (`glmmTMB`) or a table of its fixed-effect coefficients (columns `term` and `estimate`, as in hsaCEtool's `<model>_fixed.csv`), or a mix of the two.
-  If not supplied, the global model's table is read from `<coefficientsModel>_fixed.csv` in the model's zip file, `<project>_model_<coefficientsModel>.zip`, in the Google Drive folder `modelsFolderID`; with `project = NA`, the models are read from `iSSAmodels.RData` in `outputFolderID` (the boreal models, until they are fit with hsaCEtool).
+  If not supplied, the global model's table is read from `<coefficientsModel>_fixed.csv` in the model's zip file, `<project>_model_<coefficientsModel>.zip`, in the Google Drive folder `modelsFolderID`; with `project = NA`, the models are read from `iSSAmodels.RData` in `outputFolderID` (for models not fit with hsaCEtool).
   (`iSSAcoefficients`, one table for the global model, still works but is deprecated.)
-- For a model with seasons (NMC), `iSSAseasons`, the days in each season, used to weight the full-year map; read from the model's zip file when it has one.
+- For a model with seasons, `iSSAseasons`, the days in each season, used to weight the full-year map; read from the model's zip file when it has one.
 - `modelLand`, the landscape layers, named as in the model's terms; a layer the model needs and the list lacks stops the run, naming it.
   If not supplied, the landscape the project's models were fit on is read from `model_land_<baselineYear>.tif` in `<project>_model_land_<baselineYear>.zip` in the Google Drive folder `landFolderID` (as hsaCEtool uploads it); with `project = NA`, from `modelLand.tif` in `outputFolderID`.
   The project name thus pairs each model with its landscape.
-  For NMC, distances capped for the model (more than 20 km set to 21 km) carry `_adj` in their names (e.g. `dist_paved_240_adj`); the boreal distances are not capped.
+  Distances capped for the model (e.g. more than 20 km set to 21 km) carry `_adj` in their names (e.g. `dist_paved_240_adj`).
 - `studyAreaCaribou`, the area the global model was fit on, and, for the regional models, `studyArea_juris`, one area per region.
   Optionally, `studyAreaReporting`, an area to normalize and bin the maps over instead (see `pdeArea`).
 - Optionally, a baseline made earlier (`pde` and `pdeMap`, or a folder, zip file or URL in `baselineSource`), so the baseline is read rather than made again.
@@ -79,8 +83,8 @@ In dynamic mode it also uses, from the other modules of the simulation:
 - the simulation's grid (`rasterToMatch`), which every `modelLand` layer must match. If the model
   has layers coarser than the grid's cells, the grid's top-left corner must also be a multiple of
   each of those resolutions. A template cropped to a study area should be snapped outward to the
-  coarsest template resolution, not just the model's (e.g. 4800 m on the NMC templates, though the
-  current NMC models go up to 1200 m), so later models with coarser layers fit too.
+  coarsest template resolution, not just the model's (e.g. 4800 m for templates up to 4800 m, even
+  if the current models go up to 1200 m), so later models with coarser layers fit too.
 
 A forecaster that is missing leaves its layers as they are: fire and harvest layers only age, and distances stay as in `modelLand`.
 
@@ -91,13 +95,29 @@ knitr::kable(df_inputs,
 ```
 
 The parameters (Table \@ref(tab:moduleParams-caribou-SSUD)) choose the models and the area each is mapped over (`simulationScale`, `pdeArea`), static or dynamic mode and the prediction years (`simulationProcess`, `predictStartYear`, `predictionInterval`, `predictLastYear`), and where the model, its landscape and a premade baseline come from (`project`, `coefficientsModel`, `modelsFolderID`, `landFolderID`, `baselineSource`).
-In dynamic mode, further parameters say how each forecast layer is built; set them to match how the model's layers were made:
 
-- all layers: `dynamicLayers` (which layers are forecast, and from what, by a pattern on each layer's name; the default matches both the NMC and the boreal NWT layer names above) and `baselineYear` (the year `modelLand` describes, and the simulation should start in: 2025 for the NMC `modelLand`, 2022 for the boreal NWT one);
-- forest: `forestForecast` (`"change"`, the default, adds the simulated change since the start to `modelLand`'s layer; `"LandR"` uses the simulated forest alone), `forestTypes` (the LandR forest types each layer counts: NMC `prop_forest` counts all forest; boreal `prop_needleleaf` counts conifer stands and `prop_mixedforest` deciduous and mixed ones) and `forestMinBiomass`;
-- moving windows: `movingWindow` (the circles forecast layers are averaged in, as the model's layers were built: one row per window, a pattern on layer names and a radius in m; by default NMC's 240 m land cover in 500 m; for the boreal NWT `modelLand` use `data.frame(layers = "^prop_(needleleaf|mixedforest)$", radius = 720)`). A radius of `NA` takes the input `buffer`, the radius other modules in the workflow use (e.g. prepTracks); a different radius stops, so the modules cannot disagree. Only forest layers take a window so far;
-- time since fire and harvest: `ts_else` (the value given to cells that never burned or were never harvested; 200 for the NMC models), `noEventYear` (for a `modelLand` that counts such cells from a stand-in year instead: the boreal NWT one counts them from 1900, so use `list(fire = 1900, harvest = 1900)`), and `fireCoarse` and `harvestCoarse` (for layers coarser than the grid, such as NMC's 1200 m layers: whether they take the mean, the default, or the most recent fire or harvest year of their cells; use the rule the model was fit with: the mean for the V2 NMC models such as `fullV2_to2020`, the most recent for the earlier ones);
-- distances (NMC): `disturbanceClasses` (which `anthroDisturbance_Generator` classes each distance is measured to; set by default for NMC in Yukon, none for boreal), `distanceCellSize` (the cell size distances are measured on, 30 m by default, as for the NMC model's layers) and `distanceCap` (the cap for `_adj` layers).
+#### Matching a model
+
+The module cannot tell how a model's layers were made, so the settings below must match it.
+The defaults are those of the NMC models; a model made another way needs its own values.
+
+| Setting | Set it to | Default (NMC models) |
+|:--|:--|:--|
+| `project`, `coefficientsModel` (or supply `iSSAmodels` and `modelLand`) | the hsaCEtool project and model to download; `project = NA` reads `iSSAmodels.RData` and `modelLand.tif` from `outputFolderID` (models not fit with hsaCEtool) | `"NMC"`, `"bioseason_fullV2_to2020"` |
+| `simulationScale`, `jurisdiction` | which models to map: `"global"`, `"regional"` (one model per region, named as in `jurisdiction`, e.g. `"NT"`) or `"both"` | `"global"` |
+| `rasterToMatch` (input) | the grid of `modelLand` (see above) | none |
+| `baselineYear` | the year `modelLand` describes; the simulation should start in it | 2025 |
+| `dynamicLayers` | a pattern on layer names for each source (forest, fire, harvest, disturbance) | the naming rule above, plus the older names |
+| `forestTypes` | the LandR forest types each forest layer counts | `prop_forest`: all forest; `prop_needleleaf`: conifer; `prop_mixedforest`: deciduous and mixed |
+| `movingWindow` | the circle each forest layer was averaged in: a pattern on layer names and a radius in m, e.g. `data.frame(layers = "^prop_", radius = 720)` | 240 m forest layers in 500 m |
+| `ts_else`, `noEventYear` | how `modelLand` stores cells that never burned or were never harvested: a fixed number of years (`ts_else`), or years since a stand-in year (e.g. `noEventYear = list(fire = 1900, harvest = 1900)`) | 200 years |
+| `fireCoarse`, `harvestCoarse` | the rule the model's layers coarser than the grid were built with: the mean (`"mean"`) or the most recent (`"recent"`) fire or harvest year of their cells | `"mean"` (the V2 models; the earlier ones used `"recent"`) |
+| `disturbanceClasses` | the `anthroDisturbance_Generator` classes each distance layer is measured to; a distance with no class stays as in `modelLand` | the Yukon classes |
+| `distanceCellSize`, `distanceCap` | the cell size distances were measured on, and the cap for `_adj` layers | 30 m; more than 20 km set to 21 km |
+
+`forestForecast` chooses how forest layers are forecast: `"change"`, the default, adds the simulated change since the start to `modelLand`'s layer; `"LandR"` uses the simulated forest alone.
+In `movingWindow`, a radius of `NA` takes the input `buffer`, the radius other modules in the workflow use (e.g. prepTracks); a different radius stops, so the modules cannot disagree.
+Only forest layers take a window so far.
 
 
 ```{r moduleParams-caribou-SSUD, echo = FALSE, eval = TRUE, message = FALSE, warning = FALSE}
@@ -111,9 +131,9 @@ knitr::kable(df_params, caption = "List of (ref:caribou-SSUD) parameters and the
   In dynamic mode it also schedules the two events below, from `predictStartYear` every `predictionInterval` years, and in the last year when `predictLastYear` is `TRUE`.
 - `simLayers` (dynamic mode): rebuilds the layers that change, on top of the layers that do not (`fixedSSUD`), and writes the stack:
   - forest cover: the simulated cohorts classed into forest types, as a share of each cell at the layer's resolution (and of a circle around it, for layers `movingWindow` picks);
-  - time since fire: the most recent of `modelLand`'s fire and the simulation's, in years; cells that never burned get `ts_else` (NMC) or keep counting from `noEventYear` (boreal NWT);
+  - time since fire: the most recent of `modelLand`'s fire and the simulation's, in years; cells that never burned get `ts_else`, or keep counting from `noEventYear` when it is set;
   - time since harvest: `modelLand`'s, aged to the year;
-  - distances (NMC): the smaller of `modelLand`'s distance and the distance to the simulated features of that class, so features outside the simulated area, or of classes the simulation does not add, still count; `_adj` layers are capped again. Distances with no class in `disturbanceClasses` (all boreal ones) stay as in `modelLand`.
+  - distances: the smaller of `modelLand`'s distance and the distance to the simulated features of that class, so features outside the simulated area, or of classes the simulation does not add, still count; `_adj` layers are capped again. Distances with no class in `disturbanceClasses` stay as in `modelLand`.
 - `calcSimPde` (dynamic mode): maps habitat use on the rebuilt layers with the same models as the baseline, into `simPde` and `simPdeMap`, and writes them.
 
 ### Plotting
@@ -123,8 +143,8 @@ The module does not plot.
 ### Saving
 
 A baseline the module makes is written to `pde_<.studyAreaName>/` in the output folder, as `pde_<model>.tif` and, when `normalizePDE` is `TRUE`, `pdeMap_<model>.tif`; each file is registered as an output.
-The model is `global` or a region (e.g. `pde_global.tif`, or `pde_NT.tif` for a boreal regional model).
-For a model with seasons (NMC), a season's maps are named `<model>_<season>` (e.g. `pde_global_winter.tif`), and the full-year map as the model.
+The model is `global` or a region (e.g. `pde_global.tif`, or `pde_NT.tif` for a regional model named `NT`).
+For a model with seasons, a season's maps are named `<model>_<season>` (e.g. `pde_global_winter.tif`), and the full-year map as the model.
 In dynamic mode, each prediction year's layers and maps go to its `sims/` subfolder, with the year in their names (e.g. `pde_global_year2030.tif`).
 
 ### Module outputs
@@ -138,14 +158,14 @@ knitr::kable(df_outputs, caption = "List of (ref:caribou-SSUD) outputs and their
 
 ### Links to other modules
 
-In dynamic mode, for both ecotypes, the simulated forest comes from the LandR Biomass modules ([`Biomass_borealDataPrep`](https://github.com/PredictiveEcology/Biomass_borealDataPrep), [`Biomass_core`](https://github.com/PredictiveEcology/Biomass_core): `cohortData` and `pixelGroupMap`; [`Biomass_regeneration`](https://github.com/PredictiveEcology/Biomass_regeneration)), and the time since fire from the fire model ([`scfm`](https://github.com/PredictiveEcology/scfm)'s `scfmSpread`: `timeSinceFire`).
+In dynamic mode, the simulated forest comes from the LandR Biomass modules ([`Biomass_borealDataPrep`](https://github.com/PredictiveEcology/Biomass_borealDataPrep), [`Biomass_core`](https://github.com/PredictiveEcology/Biomass_core): `cohortData` and `pixelGroupMap`; [`Biomass_regeneration`](https://github.com/PredictiveEcology/Biomass_regeneration)), and the time since fire from the fire model ([`scfm`](https://github.com/PredictiveEcology/scfm)'s `scfmSpread`: `timeSinceFire`).
 
-How the model and the landscape are made currently differs between the two projects:
+The human disturbance comes from [`anthroDisturbance_Generator`](https://github.com/FOR-CAST/anthroDisturbance_Generator) (`disturbanceList`).
 
-- NMC: the iSSA is fit, and its landscape layers (`modelLand`) and coefficients made, outside SpaDES with [`hsaCEtool`](https://github.com/JWTurn/hsaCEtool).
-  In dynamic mode, the human disturbance comes from [`anthroDisturbance_Generator`](https://github.com/FOR-CAST/anthroDisturbance_Generator) (`disturbanceList`).
-- Boreal: the iSSA is fit within SpaDES, by a chain of modules: [`caribouLocPrep`](https://github.com/gc-rmcinnes/caribouLocPrep) (cleans the collar locations and makes the study areas, `studyAreaCaribou` and `studyArea_juris`), [`prepTracks`](https://github.com/gc-rmcinnes/prepTracks) (makes the steps), [`prepLandscape`](https://github.com/JWTurn/prepLandscape) (makes the yearly landscape layers), [`extractLand`](https://github.com/gc-rmcinnes/extractLand) (extracts the layers at the steps) and [`caribouiSSA`](https://github.com/gc-rmcinnes/caribouiSSA) (fits the `glmmTMB` models, `iSSAmodels`, and hands on the landscape they read, `modelLand`).
-  Distances to human disturbance are not forecast yet.
+The model and its landscape can be made in one of two ways:
+
+- outside SpaDES with [`hsaCEtool`](https://github.com/JWTurn/hsaCEtool), which fits the iSSA and uploads the model and its landscape layers (`modelLand`) by project (as for NMC);
+- within SpaDES, by a chain of modules (as for some boreal projects): [`caribouLocPrep`](https://github.com/gc-rmcinnes/caribouLocPrep) (cleans the collar locations and makes the study areas, `studyAreaCaribou` and `studyArea_juris`), [`prepTracks`](https://github.com/gc-rmcinnes/prepTracks) (makes the steps), [`prepLandscape`](https://github.com/JWTurn/prepLandscape) (makes the yearly landscape layers), [`extractLand`](https://github.com/gc-rmcinnes/extractLand) (extracts the layers at the steps) and [`caribouiSSA`](https://github.com/gc-rmcinnes/caribouiSSA) (fits the `glmmTMB` models, `iSSAmodels`, and hands on the landscape they read, `modelLand`).
 
 ### Getting help
 
