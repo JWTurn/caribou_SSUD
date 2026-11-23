@@ -54,7 +54,7 @@ test_that("makePDEs() stops naming a layer a model reads that the landscape lack
   coefs <- data.table::data.table(term = c("x_end", "z_end"), estimate = c(0.5, 1))
   expect_error(
     makePDEs(mods = list(global = coefs), envLayers = fixture_envlayers(), studyAreaCaribou = fixture_area()),
-    "'global'.*: z$"
+    "'global'.*: z\\. Supply the modelLand"
   )
 })
 

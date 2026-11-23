@@ -364,7 +364,7 @@ test_that("a static run stops naming a layer the model reads that modelLand lack
   objs <- nm_objects()
   objs$modelLand$y <- NULL
 
-  expect_error(run_simInit(paths, objs), "'global'.*: y$")
+  expect_error(run_simInit(paths, objs), "'global'.*: y\\. Supply the modelLand")
 })
 
 test_that("a static run registers the baseline files it wrote as saved outputs, even with simInit() outputs", {
