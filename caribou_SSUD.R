@@ -44,10 +44,13 @@ defineModule(sim, list(
                            " ages) and 'disturbance' (distances to anthroDisturbance_Generator's",
                            " features, see disturbanceClasses). A layer",
                            " that matches no pattern stays as in modelLand (e.g. vegetation). NULL = the",
-                           " ecotype's default: northern mountain list(forest = '^prop_forest_', fire =",
-                           " '^ts_fire_', harvest = '^ts_harv(est)?_', disturbance = '^dist_'); boreal",
-                           " list(forest = '^prop_(needleleaf|mixedforest)$', fire = '^timeSinceFire$',",
-                           " harvest = '^timeSinceHarvest$', disturbance = '^dist').")),
+                           " default, which matches layer names with a resolution (northern mountain, e.g.",
+                           " prop_forest_240, ts_fire_1200) and without (boreal NWT, e.g. prop_needleleaf,",
+                           " timeSinceFire): list(forest = '^prop_(forest_|needleleaf$|mixedforest$)', fire",
+                           " = '^(ts_fire_|timeSinceFire$)', harvest = '^(ts_harv(est)?_|timeSinceHarvest$)',",
+                           " disturbance = '^dist([^u]|u[^r]|ur[^b])', i.e. names that start with 'dist' but",
+                           " not 'disturb', so distDisturbance is a distance and disturbance_240 is not).",
+                           " list() = no forecast layers.")),
     defineParameter("movingWindow", "data.frame", data.frame(layers = "^prop_.*_240$", radius = 500), NA, NA,
                     paste0("Dynamic mode: the circular moving windows forecast layers are averaged in,",
                            " as the model's layers were built: a table with one row per window, columns",
@@ -78,11 +81,12 @@ defineModule(sim, list(
                            " combined. A forecast distance is the smaller of modelLand's and the distance",
                            " to the class's features that year (features are only ever added), so",
                            " features outside the study area or in no Generator class still count. A",
-                           " covariate not listed stays as in modelLand. NULL = the ecotype's default:",
-                           " northern mountain list(dist_paved = 'roads/paved', dist_unpaved =",
-                           " 'roads/unpaved', dist_placer = 'mining/placer', dist_quartz =",
-                           " 'mining/quartz', dist_othermines = 'mining/otherMines') (dist_lfother and",
-                           " dist_otherpoly have no Generator class); boreal none.")),
+                           " covariate not listed stays as in modelLand. NULL = the default, the Yukon",
+                           " categories the northern mountain models were fit on: list(dist_paved =",
+                           " 'roads/paved', dist_unpaved = 'roads/unpaved', dist_placer = 'mining/placer',",
+                           " dist_quartz = 'mining/quartz', dist_othermines = 'mining/otherMines')",
+                           " (dist_lfother and dist_otherpoly have no Generator class). Boreal distances",
+                           " (e.g. distpaved) are in none of them, so they stay as in modelLand.")),
     defineParameter("distanceCellSize", "numeric", 30, NA, NA,
                     paste0("Dynamic mode: cell size (m) distances are measured on, as hsaCEtool does: the",
                            " distance from each cell of this size to the nearest one a feature touches,",
@@ -396,15 +400,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
       # save layers
       outDir <- reproducible::checkPath(file.path(outputPath(sim), paste0('pde_', P(sim)$.studyAreaName), 'sims'), create = T)
 
-      if(P(sim)$ecotype == 'boreal'){
-        jur <- paste(P(sim)$jurisdiction, collapse = "")
-        terra::writeRaster(simLand, file.path(outDir, paste0("pdeLayers_", jur, key, ".tif")), filetype = "GTiff", overwrite = TRUE)
-      }
-
-      if(P(sim)$ecotype == 'northern_mountain'){
-
-        terra::writeRaster(simLand, file.path(outDir, paste0("pdeLayers_", P(sim)$.studyAreaName, "_", key, ".tif")), filetype = "GTiff", overwrite = TRUE)
-      }
+      terra::writeRaster(simLand, file.path(outDir, paste0("pdeLayers_", P(sim)$.studyAreaName, "_", key, ".tif")), filetype = "GTiff", overwrite = TRUE)
 
       sim <- scheduleEvent(sim, time(sim) + P(sim)$predictionInterval, "caribou_SSUD", "simLayers")
     },
@@ -656,7 +652,7 @@ forecastSources <- function(sim, modelNames = pdeModelNames(P(sim)$simulationSca
   mods <- pdeModels(modelNames, sim$iSSAmodels, sim$iSSAcoefficients)
   layers <- unique(unlist(lapply(mods, modelLayerNames)))
   dyn <- P(sim)$dynamicLayers
-  if (is.null(dyn)) dyn <- defaultDynamicLayers(P(sim)$ecotype)
+  if (is.null(dyn)) dyn <- defaultDynamicLayers()
   layerSources(layers, dyn)
 }
 
@@ -667,7 +663,7 @@ checkDisturbanceStart <- function(sim, grid) {
   layers <- names(sources)[sources %in% "disturbance"]
   if (!length(layers)) return(invisible(NULL))
   classes <- P(sim)$disturbanceClasses
-  if (is.null(classes)) classes <- defaultDisturbanceClasses(P(sim)$ecotype)
+  if (is.null(classes)) classes <- defaultDisturbanceClasses()
   shorter <- disturbanceMismatch(layers, sim$modelLand, grid, sim$disturbanceList, classes, P(sim))
   if (length(shorter))
     warning("At the start, distances to disturbanceList's features are shorter than modelLand's (by",

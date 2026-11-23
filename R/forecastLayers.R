@@ -2,14 +2,13 @@
 # is: <covariate>_<resolution m>[_adj], e.g. prop_forest_240, ts_fire_1200, dist_paved_240_adj; a
 # name with no resolution (e.g. timeSinceFire) is on the sim grid.
 
-# the patterns that send a layer to the module that forecasts it, by ecotype (dynamicLayers = NULL)
-defaultDynamicLayers <- function(ecotype) {
-  if (ecotype == "boreal") {
-    list(forest = "^prop_(needleleaf|mixedforest)$", fire = "^timeSinceFire$",
-         harvest = "^timeSinceHarvest$", disturbance = "^dist")
-  } else {
-    list(forest = "^prop_forest_", fire = "^ts_fire_", harvest = "^ts_harv(est)?_", disturbance = "^dist_")
-  }
+# the patterns that send a layer to the module that forecasts it (dynamicLayers = NULL), for both
+# naming styles: with resolution (northern mountain, e.g. prop_forest_240, ts_fire_1200) and without
+# (boreal NWT, e.g. prop_needleleaf, timeSinceFire). Distances start with "dist" but not "disturb"
+# (e.g. a disturbance layer such as disturbance_240 stays static; distDisturbance is a distance)
+defaultDynamicLayers <- function() {
+  list(forest = "^prop_(forest_|needleleaf$|mixedforest$)", fire = "^(ts_fire_|timeSinceFire$)",
+       harvest = "^(ts_harv(est)?_|timeSinceHarvest$)", disturbance = "^dist([^u]|u[^r]|ur[^b])")
 }
 
 # splits layer names into the covariate (`stem`), the resolution in m (`res`; NA = the sim grid) and
@@ -278,7 +277,7 @@ buildForecastLayers <- function(layers, sources, year, modelLand, grid, objs, p)
       static <- c(static, dist)
     } else {
       classes <- p$disturbanceClasses
-      if (is.null(classes)) classes <- defaultDisturbanceClasses(p$ecotype)
+      if (is.null(classes)) classes <- defaultDisturbanceClasses()
       unlinked <- dist[!info$stem[match(dist, info$layer)] %in% names(classes)]
       if (length(unlinked)) {
         message("No disturbanceClasses for these distance layers, which stay as in modelLand: ",
@@ -355,12 +354,11 @@ makeForestBaseline <- function(stems, cohortData, pixelGroupMap, p, sppEquiv = N
   }), stems)
 }
 
-# the model covariates' anthroDisturbance_Generator classes ("sector/class" in disturbanceList), by
-# ecotype (disturbanceClasses = NULL). Northern mountain: the Yukon disturbance categories the model
-# was fit on, as YT_caribou links them to the Generator's classes; dist_lfother and dist_otherpoly
-# have no Generator class. Boreal: none yet
-defaultDisturbanceClasses <- function(ecotype) {
-  if (ecotype == "boreal") return(list())
+# the model covariates' anthroDisturbance_Generator classes ("sector/class" in disturbanceList)
+# (disturbanceClasses = NULL): the Yukon disturbance categories the northern mountain models were fit
+# on, as YT_caribou links them to the Generator's classes; dist_lfother and dist_otherpoly have no
+# Generator class. Boreal distances (e.g. distpaved) match none and stay as in modelLand
+defaultDisturbanceClasses <- function() {
   list(dist_paved = "roads/paved", dist_unpaved = "roads/unpaved", dist_placer = "mining/placer",
        dist_quartz = "mining/quartz", dist_othermines = "mining/otherMines")
 }
