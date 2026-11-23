@@ -73,7 +73,8 @@ checkModelLayers <- function(mods, layerNames, warnCapped = FALSE) {
     missing <- setdiff(needed, layerNames)
     if (length(missing)) {
       stop("The '", mn, "' model reads these layers, which the landscape lacks: ",
-           paste(missing, collapse = ", "), call. = FALSE)
+           paste(missing, collapse = ", "), ". Supply the modelLand this model was fit on (a run",
+           " that does not supply modelLand downloads the boreal one).", call. = FALSE)
     }
 
     capped <- needed[!grepl("_adj$", needed) & paste0(needed, "_adj") %in% layerNames]
