@@ -80,11 +80,15 @@ combines them, weighted by season length or as chosen (`fullYear`,
 The module needs the model and the landscape the model reads (Table
 <a href="#tab:moduleInputs-caribou-SSUD">1</a>):
 
-- `iSSAcoefficients`, the northern mountain model’s fixed-effect
-  coefficients; if not supplied, they are read from
+- `iSSAmodels`, the models, named `global` and/or by region (e.g. `NT`).
+  Each can be the fitted model (`glmmTMB`) or a table of its
+  fixed-effect coefficients (columns `term` and `estimate`, as in
+  hsaCEtool’s `<model>_fixed.csv`), for either ecotype. If not supplied,
+  the NMC global model’s table is read from
   `<coefficientsModel>_fixed.csv` in the model’s zip file in the Google
-  Drive folder `modelsFolderID`. Boreal models are supplied as
-  `iSSAmodels`.
+  Drive folder `modelsFolderID`, and boreal models from
+  `iSSAmodels.RData` in `outputFolderID`. (`iSSAcoefficients`, one table
+  for the global model, still works but is deprecated.)
 - For a model with seasons (NMC), `iSSAseasons`, the days in each
   season, used to weight the full-year map; read from the model’s zip
   file when it has one.
@@ -122,8 +126,8 @@ harvest layers only age, and distances stay as in `modelLand`.
 
 | objectName | objectClass | desc | sourceURL |
 |:---|:---|:---|:---|
-| iSSAmodels | list | A list of glmmTMB iSSA models by jurisdiction or global models (boreal ecotype) | NA |
-| iSSAcoefficients | data.table | Fixed-effect coefficients of the northern mountain iSSA model: one row per term, with columns `term` and `estimate` (others, e.g. those of hsaCEtool’s `<model>_fixed.csv`, are ignored). If not supplied, it is taken from `iSSAmodels` when that is supplied, else read from `<coefficientsModel>_fixed.csv` in `NMC_model_<coefficientsModel>.zip` in `modelsFolderID`. | NA |
+| iSSAmodels | list | The iSSA models, as a list named by model: `global` and/or one per region in `jurisdiction` (e.g. list(global = m1, NT = m2)). Each is a fitted model (glmmTMB) or a table of its fixed-effect coefficients, one row per term, with columns `term` and `estimate` (others, e.g. those of hsaCEtool’s `<model>_fixed.csv`, are ignored); the two can be mixed. One model or table on its own is the global model. If not supplied: for the northern mountain ecotype, the global model’s table is read from `<coefficientsModel>_fixed.csv` in `NMC_model_<coefficientsModel>.zip` in `modelsFolderID`; for the boreal ecotype, the models are read from `iSSAmodels.RData` in `outputFolderID`. | NA |
+| iSSAcoefficients | data.table | Deprecated: supply the table in `iSSAmodels` instead. One coefficient table (as in `iSSAmodels`), used as the global model when `iSSAmodels` is not supplied. | NA |
 | iSSAseasons | data.table | For a model with seasons and seasonWeights ‘length’: the model’s season table, one row per season, with columns `season` (as in the terms, e.g. `winter` for `seasonwinter`) and `days` (days per season), as hsaCEtool’s `<model>_seasons.csv` gives it. If not supplied, read from `<coefficientsModel>_seasons.csv` in the model’s zip, when it has one (models fit before hsaCEtool wrote this table do not). | NA |
 | cohortData | data.table | `data.table` with cohort-level information on age and biomass, by `pixelGroup` and ecolocation (i.e., `ecoregionGroup`). If supplied, it must have the following columns: `pixelGroup` (integer), `ecoregionGroup` (factor), `speciesCode` (factor), `B` (integer in $g/m^2$), `age` (integer in years) | NA |
 | pixelGroupMap | SpatRaster | A raster layer with `pixelGroup` IDs per pixel. Pixels are grouped based on identical `ecoregionGroup`, `speciesCode`, `age` and `B` composition, even if the user supplies other initial groupings (e.g., via the `Biomass_borealDataPrep` module. | NA |
