@@ -36,12 +36,15 @@ probability density of use (PDE) for each model, normalized to sum to 1
 over the area it is predicted for, and a binned map of it (`pdeMap`)
 that compares the cells within that area.
 
-This module currently handles two caribou ecotypes (`ecotype`): northern
-mountain caribou (NMC), whose coefficients are read from the
-fixed-effect table of a fitted model, and boreal caribou, whose
-`glmmTMB` models are supplied one per jurisdiction. With
-`simulationScale` it maps the global model, one model per region, or
-both.
+The module has one code path for any caribou model: what differs between
+projects (the model, the landscape, layer names, defaults) is supplied
+as data or parameters. It is used for northern mountain caribou (NMC;
+Yukon), whose models are fit with
+[`hsaCEtool`](https://github.com/JWTurn/hsaCEtool), and boreal caribou
+(NWT), whose `glmmTMB` models are fit one per jurisdiction. The
+`ecotype` parameter is no longer used (it is ignored, with a message).
+With `simulationScale` it maps the global model, one model per region,
+or both.
 
 In static mode (`simulationProcess = "static"`, the default) it maps the
 baseline landscape only. In dynamic mode it also rebuilds the landscape
@@ -83,20 +86,27 @@ The module needs the model and the landscape the model reads (Table
 - `iSSAmodels`, the models, named `global` and/or by region (e.g. `NT`).
   Each can be the fitted model (`glmmTMB`) or a table of its
   fixed-effect coefficients (columns `term` and `estimate`, as in
-  hsaCEtool’s `<model>_fixed.csv`), for either ecotype. If not supplied,
-  the NMC global model’s table is read from
-  `<coefficientsModel>_fixed.csv` in the model’s zip file in the Google
-  Drive folder `modelsFolderID`, and boreal models from
-  `iSSAmodels.RData` in `outputFolderID`. (`iSSAcoefficients`, one table
-  for the global model, still works but is deprecated.)
+  hsaCEtool’s `<model>_fixed.csv`), or a mix of the two. If not
+  supplied, the global model’s table is read from
+  `<coefficientsModel>_fixed.csv` in the model’s zip file,
+  `<project>_model_<coefficientsModel>.zip`, in the Google Drive folder
+  `modelsFolderID`; with `project = NA`, the models are read from
+  `iSSAmodels.RData` in `outputFolderID` (the boreal models, until they
+  are fit with hsaCEtool). (`iSSAcoefficients`, one table for the global
+  model, still works but is deprecated.)
 - For a model with seasons (NMC), `iSSAseasons`, the days in each
   season, used to weight the full-year map; read from the model’s zip
   file when it has one.
 - `modelLand`, the landscape layers, named as in the model’s terms; a
-  layer the model needs and the list lacks stops the run, naming it. For
-  NMC, distances capped for the model (more than 20 km set to 21 km)
-  carry `_adj` in their names (e.g. `dist_paved_240_adj`); the boreal
-  distances are not capped.
+  layer the model needs and the list lacks stops the run, naming it. If
+  not supplied, the landscape the project’s models were fit on is read
+  from `model_land_<baselineYear>.tif` in
+  `<project>_model_land_<baselineYear>.zip` in the Google Drive folder
+  `landFolderID` (as hsaCEtool uploads it); with `project = NA`, from
+  `modelLand.tif` in `outputFolderID`. The project name thus pairs each
+  model with its landscape. For NMC, distances capped for the model
+  (more than 20 km set to 21 km) carry `_adj` in their names
+  (e.g. `dist_paved_240_adj`); the boreal distances are not capped.
 - `studyAreaCaribou`, the area the global model was fit on, and, for the
   regional models, `studyArea_juris`, one area per region. Optionally,
   `studyAreaReporting`, an area to normalize and bin the maps over
@@ -126,7 +136,7 @@ harvest layers only age, and distances stay as in `modelLand`.
 
 | objectName | objectClass | desc | sourceURL |
 |:---|:---|:---|:---|
-| iSSAmodels | list | The iSSA models, as a list named by model: `global` and/or one per region in `jurisdiction` (e.g. list(global = m1, NT = m2)). Each is a fitted model (glmmTMB) or a table of its fixed-effect coefficients, one row per term, with columns `term` and `estimate` (others, e.g. those of hsaCEtool’s `<model>_fixed.csv`, are ignored); the two can be mixed. One model or table on its own is the global model. If not supplied: for the northern mountain ecotype, the global model’s table is read from `<coefficientsModel>_fixed.csv` in `NMC_model_<coefficientsModel>.zip` in `modelsFolderID`; for the boreal ecotype, the models are read from `iSSAmodels.RData` in `outputFolderID`. | NA |
+| iSSAmodels | list | The iSSA models, as a list named by model: `global` and/or one per region in `jurisdiction` (e.g. list(global = m1, NT = m2)). Each is a fitted model (glmmTMB) or a table of its fixed-effect coefficients, one row per term, with columns `term` and `estimate` (others, e.g. those of hsaCEtool’s `<model>_fixed.csv`, are ignored); the two can be mixed. One model or table on its own is the global model. If not supplied, the global model’s table is read from `<coefficientsModel>_fixed.csv` in `<project>_model_<coefficientsModel>.zip` in `modelsFolderID`; with `project` NA, the models are read from `iSSAmodels.RData` in `outputFolderID`. | NA |
 | iSSAcoefficients | data.table | Deprecated: supply the table in `iSSAmodels` instead. One coefficient table (as in `iSSAmodels`), used as the global model when `iSSAmodels` is not supplied. | NA |
 | iSSAseasons | data.table | For a model with seasons and seasonWeights ‘length’: the model’s season table, one row per season, with columns `season` (as in the terms, e.g. `winter` for `seasonwinter`) and `days` (days per season), as hsaCEtool’s `<model>_seasons.csv` gives it. If not supplied, read from `<coefficientsModel>_seasons.csv` in the model’s zip, when it has one (models fit before hsaCEtool wrote this table do not). | NA |
 | cohortData | data.table | `data.table` with cohort-level information on age and biomass, by `pixelGroup` and ecolocation (i.e., `ecoregionGroup`). If supplied, it must have the following columns: `pixelGroup` (integer), `ecoregionGroup` (factor), `speciesCode` (factor), `B` (integer in $g/m^2$), `age` (integer in years) | NA |
@@ -136,7 +146,7 @@ harvest layers only age, and distances stay as in `modelLand`.
 | disturbanceList | list | Dynamic mode: anthroDisturbance_Generator’s disturbances, a list by sector of lists by class, each holding all of that class’s features (existing and simulated) as a SpatVector (or sf). Distance layers are measured to the classes in disturbanceClasses. If absent, distance layers stay as in modelLand. | NA |
 | sppEquiv | data.table | Dynamic mode: LandR’s species-equivalence table, with a `Type` column (Conifer/Deciduous) and the species codes in column sppEquivCol. If absent, LandR::sppEquivalencies_CA. | NA |
 | forestBaseline | list | Dynamic mode, forestForecast ‘change’: LandR’s forest at the start of the simulation, a named list of 0/1 SpatRasters on the forecast grid, one per forest covariate (e.g. prop_forest). If not supplied, made in init from cohortData and pixelGroupMap. | NA |
-| modelLand | list | The landscape layers the models read: a named list of SpatRasters on one grid (or one multi-layer SpatRaster, made into that list), each named as in the model’s terms without `_end` (e.g. `prop_forest_240` for the term `prop_forest_240_end`). The layers needed are read from the terms, and a missing one stops the run, naming it. Capped distances carry `_adj` (e.g. `dist_paved_240_adj`). If not supplied, `modelLand.tif` is downloaded from outputFolderID. | NA |
+| modelLand | list | The landscape layers the models read: a named list of SpatRasters on one grid (or one multi-layer SpatRaster, made into that list), each named as in the model’s terms without `_end` (e.g. `prop_forest_240` for the term `prop_forest_240_end`). The layers needed are read from the terms, and a missing one stops the run, naming it. Capped distances carry `_adj` (e.g. `dist_paved_240_adj`). If not supplied, the landscape the model was fit on is read from `model_land_<baselineYear>.tif` in `<project>_model_land_<baselineYear>.zip` in landFolderID; with `project` NA, from `modelLand.tif` in outputFolderID. | NA |
 | studyAreaCaribou | SpatVector | The area of the global model: a polygon of the full extent of the caribou locations it was fit on. If not supplied, studyArea is used. | NA |
 | studyAreaReporting | SpatVector | Optional: the area the results are reported for (e.g. a range buffer clipped to a jurisdiction), a SpatVector or sf polygon. Used only when pdeArea is ‘fullReportingArea’ or ‘regionalReportingArea’. | NA |
 | rasterToMatch | SpatRaster | Dynamic mode: the simulation’s grid, e.g. the one LandR and scfm use. The forecast layers are built on it. Every modelLand layer must be on it (same extent, rows and columns, cell size and coordinate system), or the run stops. If the model has layers coarser than the grid’s cells (e.g. ts_fire_1200 on a 240 m grid), the grid’s top-left corner (xmin, ymax) must also be a multiple of each of those resolutions, so the coarse blocks line up with modelLand’s. When cropping a template to a study area, snap the crop outward to the coarsest template resolution, not just the model’s, if the resolutions nest (e.g. 4800 m for the northern mountain templates), so later models with coarser layers fit too. If not supplied, modelLand’s grid is used. | NA |
@@ -149,20 +159,20 @@ harvest layers only age, and distances stay as in `modelLand`.
 *caribou_SSUD* input objects and their description.
 
 The parameters (Table <a href="#tab:moduleParams-caribou-SSUD">2</a>)
-choose the ecotype, the models and the area each is mapped over
-(`ecotype`, `simulationScale`, `pdeArea`), static or dynamic mode and
-the prediction years (`simulationProcess`, `predictStartYear`,
-`predictionInterval`, `predictLastYear`), and where the model and a
-premade baseline come from (`coefficientsModel`, `modelsFolderID`,
-`baselineSource`). In dynamic mode, further parameters say how each
-forecast layer is built; set them to match how the model’s layers were
-made:
+choose the models and the area each is mapped over (`simulationScale`,
+`pdeArea`), static or dynamic mode and the prediction years
+(`simulationProcess`, `predictStartYear`, `predictionInterval`,
+`predictLastYear`), and where the model, its landscape and a premade
+baseline come from (`project`, `coefficientsModel`, `modelsFolderID`,
+`landFolderID`, `baselineSource`). In dynamic mode, further parameters
+say how each forecast layer is built; set them to match how the model’s
+layers were made:
 
-- all layers: `dynamicLayers` (which layers are forecast, and from what;
-  each ecotype has its own default, matching the layer names above) and
-  `baselineYear` (the year `modelLand` describes, and the simulation
-  should start in: 2025 for the NMC `modelLand`, 2022 for the boreal NWT
-  one);
+- all layers: `dynamicLayers` (which layers are forecast, and from what,
+  by a pattern on each layer’s name; the default matches both the NMC
+  and the boreal NWT layer names above) and `baselineYear` (the year
+  `modelLand` describes, and the simulation should start in: 2025 for
+  the NMC `modelLand`, 2022 for the boreal NWT one);
 - forest: `forestForecast` (`"change"`, the default, adds the simulated
   change since the start to `modelLand`’s layer; `"LandR"` uses the
   simulated forest alone), `forestTypes` (the LandR forest types each
@@ -221,7 +231,7 @@ made:
 | seasonWeights | characte…. | length | NA | NA | How the seasons in fullYear are weighted: ‘length’ = by days per season, from iSSAseasons; ‘equal’; or numbers named by season (e.g. c(winter = 2, summer = 1)), scaled to sum to 1. | TRUE |
 | normalizePDE | logical | TRUE | NA | NA | Whether to normalize PDE inside SSUD (FALSE for tmux workflow) | TRUE |
 | jurisdiction | character | BC, SK, …. | NA | NA | A list of jurisdictions to use for PDE creation | TRUE |
-| ecotype | character | boreal | NA | NA | Which ecotype of caribou were modelled: ‘boreal’ or ‘northern_mountain’ | TRUE |
+| ecotype | character | NA | NA | NA | Deprecated and ignored: the files downloaded follow `project` (and `coefficientsModel`, `baselineYear`), not the ecotype. | TRUE |
 | .plots | character | screen | NA | NA | Used by Plots function, which can be optionally used here | TRUE |
 | .plotInitialTime | numeric | 0 | NA | NA | Describes the simulation time at which the first plot event should occur. | TRUE |
 | .plotInterval | numeric | NA | NA | NA | Describes the simulation time interval between plot events. | TRUE |
@@ -231,8 +241,10 @@ made:
 | .seed | list |  | NA | NA | Named list of seeds to use for each event (names). | TRUE |
 | .useCache | logical | FALSE | NA | NA | Should caching of events or module be used? | TRUE |
 | outputFolderID | character | <https://>…. | NA | NA | Google Drive folder ID for workflow outputs | TRUE |
-| coefficientsModel | character | bioseaso…. | NA | NA | Name of the northern mountain iSSA model whose coefficients are read | TRUE |
-| modelsFolderID | character | <https://>…. | NA | NA | Google Drive folder holding the northern mountain model zips | TRUE |
+| project | character | NMC | NA | NA | The hsaCEtool project whose model and landscape are downloaded when not supplied: the model from `<project>_model_<coefficientsModel>.zip` in modelsFolderID, and the landscape it was fit on from `<project>_model_land_<baselineYear>.zip` in landFolderID (hsaCEtool’s upload_models() and upload_model_land()). NA: files not made by hsaCEtool, `iSSAmodels.RData` and `modelLand.tif` in outputFolderID (e.g. the boreal NWT models, for now). | TRUE |
+| coefficientsModel | character | bioseaso…. | NA | NA | Name of the iSSA model (in `project`) whose coefficients are read | TRUE |
+| modelsFolderID | character | <https://>…. | NA | NA | Google Drive folder holding the project’s model zips | TRUE |
+| landFolderID | character | <https://>…. | NA | NA | Google Drive folder holding the project’s landscape zips, one per year | TRUE |
 
 <span id="tab:moduleParams-caribou-SSUD"></span>Table 2: List of
 *caribou_SSUD* parameters and their description.
@@ -308,8 +320,8 @@ and the time since fire from the fire model
 ([`scfm`](https://github.com/PredictiveEcology/scfm)’s `scfmSpread`:
 `timeSinceFire`).
 
-Where the model and the landscape come from currently differs by
-ecotype:
+How the model and the landscape are made currently differs between the
+two projects:
 
 - NMC: the iSSA is fit, and its landscape layers (`modelLand`) and
   coefficients made, outside SpaDES with
