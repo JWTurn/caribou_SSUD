@@ -20,13 +20,21 @@ test_that("parseLayerName() splits a name into covariate, resolution and cap", {
 
 test_that("layerSources() gives each layer the source whose pattern it matches, or NA", {
   out <- layerSources(c("prop_forest_240", "ts_fire_1200", "dist_paved_240_adj", "prop_veg_240"),
-                      defaultDynamicLayers("northern_mountain"))
+                      defaultDynamicLayers())
   expect_equal(unname(out), c("forest", "fire", "disturbance", NA))
   expect_named(out, c("prop_forest_240", "ts_fire_1200", "dist_paved_240_adj", "prop_veg_240"))
 
-  boreal <- layerSources(c("prop_needleleaf", "prop_veg", "timeSinceHarvest", "distpaved"),
-                         defaultDynamicLayers("boreal"))
-  expect_equal(unname(boreal), c("forest", NA, "harvest", "disturbance"))
+  ## the same default list reads boreal names (no resolution)
+  boreal <- layerSources(c("prop_needleleaf", "prop_mixedforest", "prop_veg", "prop_wets", "timeSinceFire",
+                           "timeSinceHarvest", "distpaved"), defaultDynamicLayers())
+  expect_equal(unname(boreal), c("forest", "forest", NA, NA, "fire", "harvest", "disturbance"))
+  ## distances start with "dist" but not "disturb", unless "Disturb" follows "dist"
+  dist <- layerSources(c("dist_paved_240_adj", "distunpaved", "distDisturbance", "disturbance_240",
+                         "disturb_other", "dist"), defaultDynamicLayers())
+  expect_equal(unname(dist), c(rep("disturbance", 3), NA, NA, NA))
+  ## but not other layers that start like them
+  expect_equal(unname(layerSources(c("prop_needleleaf_240", "timeSinceFire_1200"), defaultDynamicLayers())),
+               c(NA_character_, NA_character_))
 })
 
 test_that("layerSources() stops for a layer that matches two patterns, or an unnamed list", {
@@ -207,7 +215,7 @@ test_that("timeSinceLayers() reads a stand-in no-event year (noEventYear) as no 
 test_that("buildForecastLayers() takes each source's noEventYear", {
   ml <- list(timeSinceFire = fixture_grid(122), timeSinceHarvest = fixture_grid(72))
   layers <- names(ml)
-  sources <- layerSources(layers, defaultDynamicLayers("boreal"))
+  sources <- layerSources(layers, defaultDynamicLayers())
   p <- list(baselineYear = 2022, ts_else = 100, noEventYear = list(fire = 1900, harvest = 1950))
   out <- suppressMessages(buildForecastLayers(layers, sources, 2027, ml, fixture_grid(), objs = list(), p = p))
   expect_equal(out$timeSinceFire[1][[1]], 127)
@@ -221,9 +229,9 @@ test_that("buildForecastLayers() combines coarse fire and harvest layers by thei
   base[2] <- 4
   ml <- list(ts_fire_240 = base, ts_harv_240 = base)
   layers <- c("ts_fire_1200", "ts_harv_1200")
-  sources <- layerSources(layers, defaultDynamicLayers("northern_mountain"))
+  sources <- layerSources(layers, defaultDynamicLayers())
   expect_equal(unname(sources), c("fire", "harvest"))
-  expect_equal(unname(layerSources("ts_harvest_240", defaultDynamicLayers("northern_mountain"))), "harvest")
+  expect_equal(unname(layerSources("ts_harvest_240", defaultDynamicLayers())), "harvest")
   p <- list(baselineYear = 2025, ts_else = 200, fireCoarse = "recent", harvestCoarse = "mean")
   out <- suppressMessages(buildForecastLayers(layers, sources, 2030, ml, fixture_grid(), objs = list(), p = p))
   expect_equal(out$ts_fire_1200[1][[1]], 2030 - 2021)
@@ -244,7 +252,7 @@ test_that("buildForecastLayers() builds each layer from its source, and the rest
   ml <- list(prop_forest_240 = fixture_grid(0.5), ts_fire_240 = fixture_grid(NA),
              prop_veg_240 = fixture_grid(0.3), dist_paved_240_adj = fixture_grid(1000))
   layers <- c("prop_veg_240", "prop_forest_240", "ts_fire_240", "dist_paved_240_adj")
-  sources <- layerSources(layers, defaultDynamicLayers("northern_mountain"))
+  sources <- layerSources(layers, defaultDynamicLayers())
   p <- list(baselineYear = 2025, ts_else = 200, movingWindow = NULL, forestForecast = "change",
             forestTypes = list(prop_forest = c("conifer", "deciduous", "mixed")),
             forestMinBiomass = 0, sppEquivCol = "LandR")
@@ -280,7 +288,7 @@ test_that("buildForecastLayers() builds each layer from its source, and the rest
 test_that("buildForecastLayers() keeps forest layers as in modelLand and ages fire without the sim's objects", {
   ml <- list(prop_forest_240 = fixture_grid(0.5), ts_fire_240 = fixture_grid(5))
   layers <- names(ml)
-  sources <- layerSources(layers, defaultDynamicLayers("northern_mountain"))
+  sources <- layerSources(layers, defaultDynamicLayers())
   p <- list(baselineYear = 2025, ts_else = 200)
   msgs <- testthat::capture_messages(
     out <- buildForecastLayers(layers, sources, 2030, ml, fixture_grid(), objs = list(), p = p)
@@ -351,8 +359,8 @@ test_that("distanceLayer() takes the nearer of modelLand's and the sim's feature
 test_that("buildForecastLayers() measures distances to the linked classes; unlinked ones stay", {
   ml <- list(dist_paved_240_adj = fixture_grid(25000), dist_lfother_240_adj = fixture_grid(700))
   layers <- names(ml)
-  sources <- layerSources(layers, defaultDynamicLayers("northern_mountain"))
-  p <- list(ecotype = "northern_mountain", disturbanceClasses = NULL, distanceCellSize = 240,
+  sources <- layerSources(layers, defaultDynamicLayers())
+  p <- list(disturbanceClasses = NULL, distanceCellSize = 240,
             distanceCap = list(beyond_km = 20, set_to_km = 21))
   dl <- list(roads = list(paved = fixture_line(120)))
   expect_message(
@@ -372,7 +380,7 @@ test_that("buildForecastLayers() measures distances to the linked classes; unlin
 test_that("disturbanceMismatch() finds cells where the sim's features are nearer than modelLand's", {
   g <- fixture_grid()
   p <- list(distanceCellSize = 240, distanceCap = list(beyond_km = 20, set_to_km = 21))
-  classes <- defaultDisturbanceClasses("northern_mountain")
+  classes <- defaultDisturbanceClasses()
   dl <- list(roads = list(paved = fixture_line(120)))
   ## modelLand already has the road: no mismatch
   ml <- list(dist_paved_240_adj = featureDistance(fixture_line(120), g, 240))
@@ -382,5 +390,6 @@ test_that("disturbanceMismatch() finds cells where the sim's features are nearer
   out <- disturbanceMismatch("dist_paved_240_adj", ml, g, dl, classes, p)
   expect_named(out, "dist_paved_240_adj")
   expect_equal(unname(out), 1)
-  expect_length(defaultDisturbanceClasses("boreal"), 0)
+  ## boreal distance covariates have no default class: they stay as in modelLand
+  expect_false(any(c("distpaved", "distunpaved", "distpolys") %in% names(defaultDisturbanceClasses())))
 })
