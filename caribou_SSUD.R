@@ -179,7 +179,7 @@ defineModule(sim, list(
                     "Should caching of events or module be used?"),
     defineParameter("outputFolderID", "character", "https://drive.google.com/drive/folders/1CRSY_tJucL3E8VDgUYEv9WXuG1nKImH3", NA, NA,
                     "Google Drive folder ID for workflow outputs"),
-    defineParameter("coefficientsModel", "character", "fullV2_to2020", NA, NA,
+    defineParameter("coefficientsModel", "character", "bioseason_fullV2_to2020", NA, NA,
                     "Name of the northern mountain iSSA model whose coefficients are read"),
     defineParameter("modelsFolderID", "character",
                     "https://drive.google.com/drive/folders/1NMhR1zwWc6jYjhKjd7o53VsSWJ9wP5ZM", NA, NA,
