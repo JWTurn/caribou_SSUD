@@ -188,13 +188,19 @@ defineModule(sim, list(
   inputObjects = bindrows(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
     expectsInput(objectName = 'iSSAmodels', objectClass = 'list',
-                 desc = 'A list of glmmTMB iSSA models by jurisdiction or global models (boreal ecotype)'),
+                 desc = paste('The iSSA models, as a list named by model: `global` and/or one per region',
+                              'in `jurisdiction` (e.g. list(global = m1, NT = m2)). Each is a fitted model',
+                              '(glmmTMB) or a table of its fixed-effect coefficients, one row per term, with',
+                              'columns `term` and `estimate` (others, e.g. those of hsaCEtool\'s',
+                              '`<model>_fixed.csv`, are ignored); the two can be mixed. One model or table',
+                              'on its own is the global model. If not supplied: for the northern mountain',
+                              'ecotype, the global model\'s table is read from `<coefficientsModel>_fixed.csv`',
+                              'in `NMC_model_<coefficientsModel>.zip` in `modelsFolderID`; for the boreal',
+                              'ecotype, the models are read from `iSSAmodels.RData` in `outputFolderID`.')),
     expectsInput(objectName = 'iSSAcoefficients', objectClass = 'data.table',
-                 desc = paste('Fixed-effect coefficients of the northern mountain iSSA model: one row per',
-                              'term, with columns `term` and `estimate` (others, e.g. those of hsaCEtool\'s',
-                              '`<model>_fixed.csv`, are ignored). If not supplied, it is taken from',
-                              '`iSSAmodels` when that is supplied, else read from `<coefficientsModel>_fixed.csv`',
-                              'in `NMC_model_<coefficientsModel>.zip` in `modelsFolderID`.')),
+                 desc = paste('Deprecated: supply the table in `iSSAmodels` instead. One coefficient table',
+                              '(as in `iSSAmodels`), used as the global model when `iSSAmodels` is not',
+                              'supplied.')),
     expectsInput(objectName = 'iSSAseasons', objectClass = 'data.table',
                  desc = paste('For a model with seasons and seasonWeights \'length\': the model\'s season',
                               'table, one row per season, with columns `season` (as in the terms, e.g.',
@@ -398,8 +404,8 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
 
 
       # forecast the same models, and maps, as the baseline
-      mods <- pdeModels(pdeModelNames(P(sim)$simulationScale, P(sim)$jurisdiction), P(sim)$ecotype,
-                        sim$iSSAmodels, sim$iSSAcoefficients)
+      mods <- pdeModels(pdeModelNames(P(sim)$simulationScale, P(sim)$jurisdiction), sim$iSSAmodels,
+                        sim$iSSAcoefficients)
       ud <- makePDEs(mods = mods, envLayers = sim$simEnv[[key]], studyAreaCaribou = sim$studyAreaCaribou,
                      studyArea_juris = sim$studyArea_juris, normalizePDE = P(sim)$normalizePDE,
                      savePath = outDir, key = key, studyAreaReporting = sim$studyAreaReporting,
@@ -485,10 +491,10 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     sim$modelLand <- setNames(as.list(modelLandFile), names(modelLandFile))
   }
 
-  # whether iSSAmodels was supplied, recorded before the boreal block below can fill it in
-  modelsSupplied <- suppliedElsewhere("iSSAmodels", sim)
+  # whether models were supplied, as iSSAmodels or (the older way, one global table) iSSAcoefficients
+  modelsSupplied <- suppliedElsewhere("iSSAmodels", sim) || suppliedElsewhere("iSSAcoefficients", sim)
 
-  # load iSSA models (the boreal ecotype; northern mountain uses iSSAcoefficients)
+  # if not, download them: boreal models from iSSAmodels.RData in outputFolderID
   if ("boreal" %in% P(sim)$ecotype && !modelsSupplied) {
 
     message("Loading iSSA models from cloud")
@@ -515,29 +521,26 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     sim$iSSAmodels <- iSSAmodels
   }
 
-  # load the northern mountain model's coefficients: from a supplied model, else from the cloud
-  if ("northern_mountain" %in% P(sim)$ecotype && !suppliedElsewhere("iSSAcoefficients", sim)) {
-    if (modelsSupplied) {
-      sim$iSSAcoefficients <- coef_tab(sim$iSSAmodels)
-    } else {
-      message("Loading iSSA coefficients from cloud")
+  # northern mountain: the coefficient table of the model coefficientsModel, from its zip in
+  # modelsFolderID, as the global model
+  if ("northern_mountain" %in% P(sim)$ecotype && !modelsSupplied) {
+    message("Loading iSSA coefficients from cloud")
 
-      modelZip <- paste0("NMC_model_", P(sim)$coefficientsModel, ".zip")
-      coefficients <- prepInputs(
-        # the zip's own url: given the folder's, reproducible would download every zip in it
-        url = drive_file_in_folder(P(sim)$modelsFolderID, modelZip),
-        archive = modelZip,
-        targetFile = paste0(P(sim)$coefficientsModel, "_fixed.csv"),
-        destinationPath = dPath,
-        fun = data.table::fread(targetFile)
-      )
+    modelZip <- paste0("NMC_model_", P(sim)$coefficientsModel, ".zip")
+    coefficients <- prepInputs(
+      # the zip's own url: given the folder's, reproducible would download every zip in it
+      url = drive_file_in_folder(P(sim)$modelsFolderID, modelZip),
+      archive = modelZip,
+      targetFile = paste0(P(sim)$coefficientsModel, "_fixed.csv"),
+      destinationPath = dPath,
+      fun = data.table::fread(targetFile)
+    )
 
-      sim$iSSAcoefficients <- coef_tab(coefficients)
+    sim$iSSAmodels <- list(global = coef_tab(coefficients))
 
-      # the model's season table, if its zip has one
-      if (!suppliedElsewhere("iSSAseasons", sim)) {
-        sim$iSSAseasons <- readZipSeasons(file.path(dPath, modelZip), P(sim)$coefficientsModel)
-      }
+    # the model's season table, if its zip has one
+    if (!suppliedElsewhere("iSSAseasons", sim)) {
+      sim$iSSAseasons <- readZipSeasons(file.path(dPath, modelZip), P(sim)$coefficientsModel)
     }
   }
 
@@ -562,7 +565,7 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
 
   # the baseline and forecast setup; init makes what needs objects that other modules make later
   ready <- !is.null(sim$modelLand) &&
-    !is.null(if (P(sim)$ecotype == "boreal") sim$iSSAmodels else sim$iSSAcoefficients)
+    (!is.null(sim$iSSAmodels) || !is.null(sim$iSSAcoefficients))
   if (ready) {
     sim <- setupBaseline(sim, objects = c("fixedSSUD", "pde")[
       !c(suppliedElsewhere("fixedSSUD", sim), suppliedElsewhere("pde", sim))
@@ -585,7 +588,7 @@ setupBaseline <- function(sim, objects = c("fixedSSUD", "pde")) {
 
   dPath <- asPath(getOption("reproducible.destinationPath", dataPath(sim)), 1)
   modelNames <- pdeModelNames(P(sim)$simulationScale, P(sim)$jurisdiction)
-  mods <- pdeModels(modelNames, P(sim)$ecotype, sim$iSSAmodels, sim$iSSAcoefficients)
+  mods <- pdeModels(modelNames, sim$iSSAmodels, sim$iSSAcoefficients)
 
   # forecast setup: the landscape layers that stay fixed (those no dynamicLayers pattern matches)
   if (P(sim)$simulationProcess == "dynamic") {
@@ -633,7 +636,7 @@ setupBaseline <- function(sim, objects = c("fixedSSUD", "pde")) {
 ## The layers the forecast models read (`modelNames`; by default the models run), named by layer,
 ## each with the dynamicLayers source that forecasts it, or NA (fixed, from modelLand)
 forecastSources <- function(sim, modelNames = pdeModelNames(P(sim)$simulationScale, P(sim)$jurisdiction)) {
-  mods <- pdeModels(modelNames, P(sim)$ecotype, sim$iSSAmodels, sim$iSSAcoefficients)
+  mods <- pdeModels(modelNames, sim$iSSAmodels, sim$iSSAcoefficients)
   layers <- unique(unlist(lapply(mods, modelLayerNames)))
   dyn <- P(sim)$dynamicLayers
   if (is.null(dyn)) dyn <- defaultDynamicLayers(P(sim)$ecotype)

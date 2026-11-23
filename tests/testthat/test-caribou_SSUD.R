@@ -141,6 +141,25 @@ test_that("simInit() makes the baseline when not supplied, and writes no files (
   expect_false(dir.exists(file.path(paths$other, "pde_test")))
 })
 
+test_that("simInit() takes coefficient tables in iSSAmodels, for any ecotype and regional models too", {
+  skip_if_not_installed("SpaDES.core")
+  paths <- local_spades_sandbox()
+  local_prepInputs_mock(function(targetFile = NULL, ...) stop("download attempted: ", targetFile))
+  tab <- coef_tab(fixture_coefs())
+  objs <- nm_objects()
+  objs$iSSAcoefficients <- NULL
+  objs$iSSAmodels <- list(global = tab, NTYT = tab)
+  objs$studyArea_juris <- list(NTYT = fixture_area())
+
+  made <- makePDEs(list(global = tab), fixture_envlayers(), studyAreaCaribou = fixture_area())
+  for (eco in c("northern_mountain", "boreal")) {
+    sim <- run_simInit(paths, objs, params = list(ecotype = eco, simulationScale = "both",
+                                                  jurisdiction = "NTYT"))
+    expect_named(sim$pde, c("global", "NTYT"))
+    expect_equal(terra::values(sim$pde$global), terra::values(made$pde$global))
+  }
+})
+
 test_that("simInit() takes a supplied baseline as it is, and makes and saves nothing", {
   skip_if_not_installed("SpaDES.core")
   paths <- local_spades_sandbox()
