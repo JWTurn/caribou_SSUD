@@ -164,8 +164,9 @@ defineModule(sim, list(
                     desc = "Whether to normalize PDE inside SSUD (FALSE for tmux workflow)"),
     defineParameter("jurisdiction", "character",c("BC","SK","MB", "ON", "NTYT", "NT"),
                     desc = "A list of jurisdictions to use for PDE creation"),
-    defineParameter("ecotype", "character", "boreal",
-                    desc = "Which ecotype of caribou were modelled: 'boreal' or 'northern_mountain'"),
+    defineParameter("ecotype", "character", NA,
+                    desc = paste("Deprecated and ignored: the files downloaded follow `project` (and",
+                                 "`coefficientsModel`, `baselineYear`), not the ecotype.")),
     #####
     defineParameter(".plots", "character", "screen", NA, NA,
                     "Used by Plots function, which can be optionally used here"),
@@ -188,11 +189,22 @@ defineModule(sim, list(
                     "Should caching of events or module be used?"),
     defineParameter("outputFolderID", "character", "https://drive.google.com/drive/folders/1CRSY_tJucL3E8VDgUYEv9WXuG1nKImH3", NA, NA,
                     "Google Drive folder ID for workflow outputs"),
+    defineParameter("project", "character", "NMC", NA, NA,
+                    paste("The hsaCEtool project whose model and landscape are downloaded when not",
+                          "supplied: the model from `<project>_model_<coefficientsModel>.zip` in",
+                          "modelsFolderID, and the landscape it was fit on from",
+                          "`<project>_model_land_<baselineYear>.zip` in landFolderID (hsaCEtool's",
+                          "upload_models() and upload_model_land()). NA: files not made by hsaCEtool,",
+                          "`iSSAmodels.RData` and `modelLand.tif` in outputFolderID (e.g. the boreal",
+                          "NWT models, for now).")),
     defineParameter("coefficientsModel", "character", "bioseason_fullV2_to2020", NA, NA,
-                    "Name of the northern mountain iSSA model whose coefficients are read"),
+                    "Name of the iSSA model (in `project`) whose coefficients are read"),
     defineParameter("modelsFolderID", "character",
                     "https://drive.google.com/drive/folders/1NMhR1zwWc6jYjhKjd7o53VsSWJ9wP5ZM", NA, NA,
-                    "Google Drive folder holding the northern mountain model zips")
+                    "Google Drive folder holding the project's model zips"),
+    defineParameter("landFolderID", "character",
+                    "https://drive.google.com/drive/folders/1EoERHOUCV4ZUxS9JlgX-She81mjWhP-O", NA, NA,
+                    "Google Drive folder holding the project's landscape zips, one per year")
   ),
   inputObjects = bindrows(
     #expectsInput("objectName", "objectClass", "input object description", sourceURL, ...),
@@ -202,10 +214,10 @@ defineModule(sim, list(
                               '(glmmTMB) or a table of its fixed-effect coefficients, one row per term, with',
                               'columns `term` and `estimate` (others, e.g. those of hsaCEtool\'s',
                               '`<model>_fixed.csv`, are ignored); the two can be mixed. One model or table',
-                              'on its own is the global model. If not supplied: for the northern mountain',
-                              'ecotype, the global model\'s table is read from `<coefficientsModel>_fixed.csv`',
-                              'in `NMC_model_<coefficientsModel>.zip` in `modelsFolderID`; for the boreal',
-                              'ecotype, the models are read from `iSSAmodels.RData` in `outputFolderID`.')),
+                              'on its own is the global model. If not supplied, the global model\'s table is',
+                              'read from `<coefficientsModel>_fixed.csv` in',
+                              '`<project>_model_<coefficientsModel>.zip` in `modelsFolderID`; with `project`',
+                              'NA, the models are read from `iSSAmodels.RData` in `outputFolderID`.')),
     expectsInput(objectName = 'iSSAcoefficients', objectClass = 'data.table',
                  desc = paste('Deprecated: supply the table in `iSSAmodels` instead. One coefficient table',
                               '(as in `iSSAmodels`), used as the global model when `iSSAmodels` is not',
@@ -259,7 +271,9 @@ defineModule(sim, list(
                                "`prop_forest_240` for the term `prop_forest_240_end`). The layers needed",
                                "are read from the terms, and a missing one stops the run, naming it.",
                                "Capped distances carry `_adj` (e.g. `dist_paved_240_adj`). If not",
-                               "supplied, `modelLand.tif` is downloaded from outputFolderID.")),
+                               "supplied, the landscape the model was fit on is read from",
+                               "`model_land_<baselineYear>.tif` in `<project>_model_land_<baselineYear>.zip`",
+                               "in landFolderID; with `project` NA, from `modelLand.tif` in outputFolderID.")),
     expectsInput(objectName = "studyAreaCaribou", objectClass = "SpatVector",
                  desc = paste("The area of the global model: a polygon of the full extent of the caribou",
                               "locations it was fit on. If not supplied, studyArea is used.")),
@@ -446,9 +460,12 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
   dPath <- asPath(getOption("reproducible.destinationPath", dataPath(sim)), 1)
   message(currentModule(sim), ": using dataPath '", dPath, "'.")
 
-  if (length(P(sim)$ecotype) != 1 || !P(sim)$ecotype %in% c("boreal", "northern_mountain")) {
-    stop("ecotype must be one of 'boreal' or 'northern_mountain'")
+  if (!all(is.na(P(sim)$ecotype))) {
+    message("ecotype is deprecated and ignored: the files downloaded follow `project`")
   }
+  project <- P(sim)$project
+  if (length(project) != 1) stop("project must be one name, or NA")
+  hsaProject <- !is.na(project)
   for (prm in c("fireCoarse", "harvestCoarse")) {
     if (length(P(sim)[[prm]]) != 1 || !P(sim)[[prm]] %in% c("recent", "mean")) {
       stop(prm, " must be one of 'recent' or 'mean'")
@@ -482,8 +499,33 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     sim$studyAreaCaribou <- sim$studyArea
   }
   
-  # load modelLand
-  if (!suppliedElsewhere("modelLand", sim)) {
+  # load modelLand: the project's landscape for baselineYear, or (project NA) modelLand.tif
+  if (!suppliedElsewhere("modelLand", sim) && hsaProject) {
+
+    landZip <- paste0(project, "_model_land_", P(sim)$baselineYear, ".zip")
+    message("Loading modelLand from cloud: ", landZip)
+
+    modelLandFile <- tryCatch(
+      prepInputs(
+        # the zip's own url: given the folder's, reproducible would download every zip in it
+        url = drive_file_in_folder(P(sim)$landFolderID, landZip),
+        archive = landZip,
+        targetFile = paste0("model_land_", P(sim)$baselineYear, ".tif"),
+        destinationPath = dPath,
+        fun = terra::rast
+      ),
+      error = function(e) stop(
+        "Could not download ", landZip, " from landFolderID (", P(sim)$landFolderID, "): ",
+        conditionMessage(e), "\nSupply modelLand, or set project, baselineYear and landFolderID to",
+        " a landscape zip on Google Drive (project NA reads modelLand.tif from outputFolderID).",
+        call. = FALSE)
+    )
+
+    # as.list() drops the layer names, which make_pde() needs
+    sim$modelLand <- setNames(as.list(modelLandFile), names(modelLandFile))
+  }
+
+  if (!suppliedElsewhere("modelLand", sim) && !hsaProject) {
 
     message("Loading modelLand from cloud")
 
@@ -507,8 +549,8 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
   # whether models were supplied, as iSSAmodels or (the older way, one global table) iSSAcoefficients
   modelsSupplied <- suppliedElsewhere("iSSAmodels", sim) || suppliedElsewhere("iSSAcoefficients", sim)
 
-  # if not, download them: boreal models from iSSAmodels.RData in outputFolderID
-  if ("boreal" %in% P(sim)$ecotype && !modelsSupplied) {
+  # if not, download them: with project NA, from iSSAmodels.RData in outputFolderID
+  if (!hsaProject && !modelsSupplied) {
 
     message("Loading iSSA models from cloud")
 
@@ -534,12 +576,15 @@ doEvent.caribou_SSUD = function(sim, eventTime, eventType) {
     sim$iSSAmodels <- iSSAmodels
   }
 
-  # northern mountain: the coefficient table of the model coefficientsModel, from its zip in
+  # otherwise the coefficient table of the project's model coefficientsModel, from its zip in
   # modelsFolderID, as the global model
-  if ("northern_mountain" %in% P(sim)$ecotype && !modelsSupplied) {
+  if (hsaProject && !modelsSupplied) {
+    if (length(P(sim)$coefficientsModel) != 1 || is.na(P(sim)$coefficientsModel)) {
+      stop("coefficientsModel must name one model of project '", project, "', or supply iSSAmodels")
+    }
     message("Loading iSSA coefficients from cloud")
 
-    modelZip <- paste0("NMC_model_", P(sim)$coefficientsModel, ".zip")
+    modelZip <- paste0(project, "_model_", P(sim)$coefficientsModel, ".zip")
     coefficients <- prepInputs(
       # the zip's own url: given the folder's, reproducible would download every zip in it
       url = drive_file_in_folder(P(sim)$modelsFolderID, modelZip),

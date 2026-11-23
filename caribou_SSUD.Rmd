@@ -35,7 +35,9 @@ caribou_SSUD maps caribou habitat use from an integrated step-selection analysis
 It turns the model's fixed-effect coefficients into a steady-state utilization distribution [@PottsSchlagel2020]: the long-run density of use the model's habitat and movement terms imply over a landscape.
 The result is a probability density of use (PDE) for each model, normalized to sum to 1 over the area it is predicted for, and a binned map of it (`pdeMap`) that compares the cells within that area.
 
-This module currently handles two caribou ecotypes (`ecotype`): northern mountain caribou (NMC), whose coefficients are read from the fixed-effect table of a fitted model, and boreal caribou, whose `glmmTMB` models are supplied one per jurisdiction.
+The module has one code path for any caribou model: what differs between projects (the model, the landscape, layer names, defaults) is supplied as data or parameters.
+It is used for northern mountain caribou (NMC; Yukon), whose models are fit with [`hsaCEtool`](https://github.com/JWTurn/hsaCEtool), and boreal caribou (NWT), whose `glmmTMB` models are fit one per jurisdiction.
+The `ecotype` parameter is no longer used (it is ignored, with a message).
 With `simulationScale` it maps the global model, one model per region, or both.
 
 In static mode (`simulationProcess = "static"`, the default) it maps the baseline landscape only.
@@ -57,11 +59,13 @@ For a model fit with seasons (terms such as `seasonwinter:prop_forest_240_end`; 
 
 The module needs the model and the landscape the model reads (Table \@ref(tab:moduleInputs-caribou-SSUD)):
 
-- `iSSAmodels`, the models, named `global` and/or by region (e.g. `NT`). Each can be the fitted model (`glmmTMB`) or a table of its fixed-effect coefficients (columns `term` and `estimate`, as in hsaCEtool's `<model>_fixed.csv`), for either ecotype.
-  If not supplied, the NMC global model's table is read from `<coefficientsModel>_fixed.csv` in the model's zip file in the Google Drive folder `modelsFolderID`, and boreal models from `iSSAmodels.RData` in `outputFolderID`.
+- `iSSAmodels`, the models, named `global` and/or by region (e.g. `NT`). Each can be the fitted model (`glmmTMB`) or a table of its fixed-effect coefficients (columns `term` and `estimate`, as in hsaCEtool's `<model>_fixed.csv`), or a mix of the two.
+  If not supplied, the global model's table is read from `<coefficientsModel>_fixed.csv` in the model's zip file, `<project>_model_<coefficientsModel>.zip`, in the Google Drive folder `modelsFolderID`; with `project = NA`, the models are read from `iSSAmodels.RData` in `outputFolderID` (the boreal models, until they are fit with hsaCEtool).
   (`iSSAcoefficients`, one table for the global model, still works but is deprecated.)
 - For a model with seasons (NMC), `iSSAseasons`, the days in each season, used to weight the full-year map; read from the model's zip file when it has one.
 - `modelLand`, the landscape layers, named as in the model's terms; a layer the model needs and the list lacks stops the run, naming it.
+  If not supplied, the landscape the project's models were fit on is read from `model_land_<baselineYear>.tif` in `<project>_model_land_<baselineYear>.zip` in the Google Drive folder `landFolderID` (as hsaCEtool uploads it); with `project = NA`, from `modelLand.tif` in `outputFolderID`.
+  The project name thus pairs each model with its landscape.
   For NMC, distances capped for the model (more than 20 km set to 21 km) carry `_adj` in their names (e.g. `dist_paved_240_adj`); the boreal distances are not capped.
 - `studyAreaCaribou`, the area the global model was fit on, and, for the regional models, `studyArea_juris`, one area per region.
   Optionally, `studyAreaReporting`, an area to normalize and bin the maps over instead (see `pdeArea`).
@@ -86,10 +90,10 @@ knitr::kable(df_inputs,
              caption = "List of (ref:caribou-SSUD) input objects and their description.")
 ```
 
-The parameters (Table \@ref(tab:moduleParams-caribou-SSUD)) choose the ecotype, the models and the area each is mapped over (`ecotype`, `simulationScale`, `pdeArea`), static or dynamic mode and the prediction years (`simulationProcess`, `predictStartYear`, `predictionInterval`, `predictLastYear`), and where the model and a premade baseline come from (`coefficientsModel`, `modelsFolderID`, `baselineSource`).
+The parameters (Table \@ref(tab:moduleParams-caribou-SSUD)) choose the models and the area each is mapped over (`simulationScale`, `pdeArea`), static or dynamic mode and the prediction years (`simulationProcess`, `predictStartYear`, `predictionInterval`, `predictLastYear`), and where the model, its landscape and a premade baseline come from (`project`, `coefficientsModel`, `modelsFolderID`, `landFolderID`, `baselineSource`).
 In dynamic mode, further parameters say how each forecast layer is built; set them to match how the model's layers were made:
 
-- all layers: `dynamicLayers` (which layers are forecast, and from what; each ecotype has its own default, matching the layer names above) and `baselineYear` (the year `modelLand` describes, and the simulation should start in: 2025 for the NMC `modelLand`, 2022 for the boreal NWT one);
+- all layers: `dynamicLayers` (which layers are forecast, and from what, by a pattern on each layer's name; the default matches both the NMC and the boreal NWT layer names above) and `baselineYear` (the year `modelLand` describes, and the simulation should start in: 2025 for the NMC `modelLand`, 2022 for the boreal NWT one);
 - forest: `forestForecast` (`"change"`, the default, adds the simulated change since the start to `modelLand`'s layer; `"LandR"` uses the simulated forest alone), `forestTypes` (the LandR forest types each layer counts: NMC `prop_forest` counts all forest; boreal `prop_needleleaf` counts conifer stands and `prop_mixedforest` deciduous and mixed ones) and `forestMinBiomass`;
 - moving windows: `movingWindow` (the circles forecast layers are averaged in, as the model's layers were built: one row per window, a pattern on layer names and a radius in m; by default NMC's 240 m land cover in 500 m; for the boreal NWT `modelLand` use `data.frame(layers = "^prop_(needleleaf|mixedforest)$", radius = 720)`). A radius of `NA` takes the input `buffer`, the radius other modules in the workflow use (e.g. prepTracks); a different radius stops, so the modules cannot disagree. Only forest layers take a window so far;
 - time since fire and harvest: `ts_else` (the value given to cells that never burned or were never harvested; 200 for the NMC models), `noEventYear` (for a `modelLand` that counts such cells from a stand-in year instead: the boreal NWT one counts them from 1900, so use `list(fire = 1900, harvest = 1900)`), and `fireCoarse` and `harvestCoarse` (for layers coarser than the grid, such as NMC's 1200 m layers: whether they take the mean, the default, or the most recent fire or harvest year of their cells; use the rule the model was fit with: the mean for the V2 NMC models such as `fullV2_to2020`, the most recent for the earlier ones);
@@ -136,7 +140,7 @@ knitr::kable(df_outputs, caption = "List of (ref:caribou-SSUD) outputs and their
 
 In dynamic mode, for both ecotypes, the simulated forest comes from the LandR Biomass modules ([`Biomass_borealDataPrep`](https://github.com/PredictiveEcology/Biomass_borealDataPrep), [`Biomass_core`](https://github.com/PredictiveEcology/Biomass_core): `cohortData` and `pixelGroupMap`; [`Biomass_regeneration`](https://github.com/PredictiveEcology/Biomass_regeneration)), and the time since fire from the fire model ([`scfm`](https://github.com/PredictiveEcology/scfm)'s `scfmSpread`: `timeSinceFire`).
 
-Where the model and the landscape come from currently differs by ecotype:
+How the model and the landscape are made currently differs between the two projects:
 
 - NMC: the iSSA is fit, and its landscape layers (`modelLand`) and coefficients made, outside SpaDES with [`hsaCEtool`](https://github.com/JWTurn/hsaCEtool).
   In dynamic mode, the human disturbance comes from [`anthroDisturbance_Generator`](https://github.com/FOR-CAST/anthroDisturbance_Generator) (`disturbanceList`).

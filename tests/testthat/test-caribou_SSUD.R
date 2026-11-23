@@ -52,7 +52,7 @@ run_simInit <- function(paths, objects, params = list(), ..., times = list(start
     ...,
     times = times,
     params = list(caribou_SSUD = utils::modifyList(
-      list(ecotype = "northern_mountain", .studyAreaName = "test", .useCache = FALSE), params
+      list(.studyAreaName = "test", .useCache = FALSE), params
     )),
     modules = "caribou_SSUD",
     paths = list(
@@ -72,7 +72,7 @@ test_that("the module's metadata parses, with the inputs .inputObjects() fetches
 
   md <- SpaDES.core::moduleMetadata(module = "caribou_SSUD", path = paths$modulePath)
   expect_contains(md$inputObjects$objectName, c("iSSAmodels", "modelLand"))
-  expect_contains(md$parameters$paramName, c("ecotype", "outputFolderID", "normalizePDE", "pdeArea"))
+  expect_contains(md$parameters$paramName, c("project", "landFolderID", "outputFolderID", "normalizePDE", "pdeArea"))
   expect_contains(md$inputObjects$objectName, c("rasterToMatch", "studyAreaReporting"))
   expect_false("rasterToMatch_SSUD" %in% md$inputObjects$objectName)
   expect_equal(md$parameters$default[[which(md$parameters$paramName == "ts_else")]], 200)
@@ -99,7 +99,7 @@ test_that("simInit() takes supplied inputs as they are and downloads nothing", {
   expect_named(sim$studyArea_juris, "NTYT")
 })
 
-test_that("simInit() downloads only a missing input, from outputFolderID", {
+test_that("with project NA, simInit() downloads only a missing input, from outputFolderID", {
   skip_if_not_installed("SpaDES.core")
   paths <- local_spades_sandbox()
   calls <- list()
@@ -115,7 +115,7 @@ test_that("simInit() downloads only a missing input, from outputFolderID", {
     paths,
     list(iSSAmodels = list(fixture_fit()), studyArea_juris = list(NTYT = fixture_area()),
          studyAreaCaribou = fixture_area()),
-    params = list(outputFolderID = folder)
+    params = list(project = NA, outputFolderID = folder)
   )
   expect_identical(calls, list(list(targetFile = "modelLand.tif", url = folder)))
   expect_named(sim$modelLand, c("x", "y"))
@@ -141,7 +141,7 @@ test_that("simInit() makes the baseline when not supplied, and writes no files (
   expect_false(dir.exists(file.path(paths$other, "pde_test")))
 })
 
-test_that("simInit() takes coefficient tables in iSSAmodels, for any ecotype and regional models too", {
+test_that("simInit() takes coefficient tables in iSSAmodels, regional models too, and ignores ecotype", {
   skip_if_not_installed("SpaDES.core")
   paths <- local_spades_sandbox()
   local_prepInputs_mock(function(targetFile = NULL, ...) stop("download attempted: ", targetFile))
@@ -152,12 +152,21 @@ test_that("simInit() takes coefficient tables in iSSAmodels, for any ecotype and
   objs$studyArea_juris <- list(NTYT = fixture_area())
 
   made <- makePDEs(list(global = tab), fixture_envlayers(), studyAreaCaribou = fixture_area())
-  for (eco in c("northern_mountain", "boreal")) {
-    sim <- run_simInit(paths, objs, params = list(ecotype = eco, simulationScale = "both",
-                                                  jurisdiction = "NTYT"))
-    expect_named(sim$pde, c("global", "NTYT"))
-    expect_equal(terra::values(sim$pde$global), terra::values(made$pde$global))
-  }
+  sim <- run_simInit(paths, objs, params = list(simulationScale = "both", jurisdiction = "NTYT"))
+  expect_named(sim$pde, c("global", "NTYT"))
+  expect_equal(terra::values(sim$pde$global), terra::values(made$pde$global))
+
+  expect_message(
+    SpaDES.core::simInit(
+      times = list(start = 2025, end = 2025),
+      params = list(caribou_SSUD = list(ecotype = "boreal", .studyAreaName = "test", .useCache = FALSE)),
+      modules = "caribou_SSUD",
+      paths = list(modulePath = paths$modulePath, inputPath = paths$other, outputPath = paths$other,
+                   cachePath = paths$other, scratchPath = paths$other),
+      objects = objs
+    ),
+    "ecotype is deprecated and ignored"
+  )
 })
 
 test_that("simInit() takes a supplied baseline as it is, and makes and saves nothing", {
@@ -283,7 +292,73 @@ test_that("simInit() says what to supply when outputFolderID lacks modelLand.tif
 
   objs <- nm_objects()
   objs$modelLand <- NULL
-  expect_error(run_simInit(paths, objs), "Could not download modelLand.tif.*File not found.*Supply modelLand")
+  expect_error(run_simInit(paths, objs, params = list(project = NA)),
+               "Could not download modelLand.tif.*File not found.*Supply modelLand")
+})
+
+## Drive holds one file per name in each folder, with the id "id_<name>"
+local_drive_find_mock <- function(env = parent.frame()) {
+  testthat::local_mocked_bindings(
+    drive_find = function(q, ...) {
+      name <- sub("^name = '(.*)'$", "\\1", grep("^name = ", q, value = TRUE))
+      data.frame(name = name, id = paste0("id_", name))
+    },
+    .package = "googledrive",
+    .env = env
+  )
+}
+
+test_that("simInit() downloads the project's landscape for baselineYear and its model, each from its folder", {
+  skip_if_not_installed("SpaDES.core")
+  paths <- local_spades_sandbox()
+  local_drive_find_mock()
+  calls <- list()
+  local_prepInputs_mock(function(targetFile = NULL, url = NULL, archive = NULL, ...) {
+    calls[[length(calls) + 1L]] <<- list(targetFile = targetFile, url = url, archive = archive)
+    if (identical(targetFile, "model_land_2020.tif")) {
+      r <- fixture_envlayers()
+      return(stats::setNames(c(r$x, r$y), c("x", "y")))
+    }
+    if (identical(targetFile, "m1_fixed.csv")) return(data.table::as.data.table(fixture_coefs()))
+    stop("unexpected download: ", targetFile)
+  })
+
+  sim <- run_simInit(
+    paths, list(studyAreaCaribou = fixture_area()),
+    params = list(project = "P", coefficientsModel = "m1", baselineYear = 2020L),
+    times = list(start = 2020, end = 2020)
+  )
+  expect_identical(calls, list(
+    list(targetFile = "model_land_2020.tif", url = "https://drive.google.com/file/d/id_P_model_land_2020.zip",
+         archive = "P_model_land_2020.zip"),
+    list(targetFile = "m1_fixed.csv", url = "https://drive.google.com/file/d/id_P_model_m1.zip",
+         archive = "P_model_m1.zip")
+  ))
+  expect_named(sim$modelLand, c("x", "y"))
+  expect_named(sim$iSSAmodels, "global")
+})
+
+test_that("simInit() says what to supply when the project's landscape cannot be downloaded", {
+  skip_if_not_installed("SpaDES.core")
+  paths <- local_spades_sandbox()
+  local_drive_find_mock()
+  local_prepInputs_mock(function(...) stop("File not found"))
+
+  objs <- nm_objects()
+  objs$modelLand <- NULL
+  expect_error(run_simInit(paths, objs),
+               "Could not download NMC_model_land_2025.zip from landFolderID.*File not found.*Supply modelLand")
+})
+
+test_that("simInit() stops when a project's model is to be downloaded and coefficientsModel names none", {
+  skip_if_not_installed("SpaDES.core")
+  paths <- local_spades_sandbox()
+  local_prepInputs_mock(function(targetFile = NULL, ...) stop("download attempted: ", targetFile))
+
+  objs <- nm_objects()
+  objs$iSSAcoefficients <- NULL
+  expect_error(run_simInit(paths, objs, params = list(coefficientsModel = NA)),
+               "coefficientsModel must name one model of project 'NMC'")
 })
 
 test_that("a dynamic run with a season model makes the season and full-year maps, for the baseline and forecasts", {
